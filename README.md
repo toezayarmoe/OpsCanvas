@@ -1,11 +1,11 @@
 # CLIFlow
 
-CLIFlow is a visual automation studio for composing and executing dependency-based CLI workflows. The React Flow editor provides shell, SSH, Docker, and HTTP webhook nodes; the Node.js engine evaluates graphs as DAGs, runs independent nodes in parallel, and streams terminal output over authenticated WebSockets.
+CLIFlow is a visual automation studio for composing and executing dependency-based CLI workflows. The React Flow editor provides variables, shell, SSH, Docker, and HTTP webhook nodes; the Node.js engine evaluates graphs as DAGs, runs independent nodes in parallel, and streams terminal output over authenticated WebSockets.
 
 ## Features
 
 - Dark workflow editor with drag-and-drop nodes, typed inspector, custom templates, minimap, and live terminal output.
-- Shell, SSH, Docker container, and webhook execution adapters.
+- Variables, shell, SSH, Docker container, and webhook nodes.
 - Parallel DAG scheduler with cycle validation, failure propagation, cancellation, and JSON data chaining.
 - MySQL persistence for users, sessions, and per-user workflows.
 - Password-hashed accounts with opaque database-backed `HttpOnly` session cookies.
@@ -55,7 +55,7 @@ Open `http://localhost:4000`, register an account, and load **Parallel JSON repo
 4. Choose **Save changes** to persist the workflow to MySQL.
 5. Choose **Run workflow** and watch live output in the execution console.
 
-Nodes without dependencies execute immediately and in parallel. Nodes with dependencies start once all incoming nodes complete. See [NODE_USAGE.md](NODE_USAGE.md) for complete Shell, SSH, Docker, Webhook, JSON data-flow, templates, error-handling, and log-streaming instructions.
+Nodes without dependencies execute immediately and in parallel. Nodes with dependencies start once all incoming nodes complete. See [NODE_USAGE.md](NODE_USAGE.md) for complete Variables, Shell, SSH, Docker, Webhook, JSON data-flow, templates, error-handling, and log-streaming instructions.
 
 Useful commands:
 
@@ -138,12 +138,13 @@ Authenticated routes:
 
 The full operator guide is in [NODE_USAGE.md](NODE_USAGE.md). Key runtime facts:
 
+- **Variables** defines named values for directly connected task nodes. For example, define `{ "url": "google.com" }`, connect it to a Shell node, and run `curl https://{url}`.
 - **Shell command** runs via the chosen shell (`/bin/sh -lc` by default) in the application execution environment. With Docker Compose, that means inside the `app` container.
 - **SSH command** invokes `ssh` from the application execution environment. SSH keys and host verification files must exist inside that environment.
 - **Docker container** invokes `docker run --rm`. The supplied public-server Compose setup intentionally has no Docker socket or Docker CLI access, so Docker nodes require a separately isolated Docker-capable execution environment.
 - **Webhook** issues HTTP requests using server-side `fetch`; restrict allowed destinations before allowing untrusted operators.
 
-When a node prints valid JSON, it becomes structured downstream output. Otherwise the engine creates `{ "stdout": "...", "stderr": "..." }`. Downstream shell, SSH, and Docker tasks receive dependency results through `FLOW_INPUT_JSON`; shell commands, SSH commands, Docker commands, webhook URLs, and webhook request bodies may use `{{input}}`.
+When a node prints valid JSON, it becomes structured downstream output. Otherwise the engine creates `{ "stdout": "...", "stderr": "..." }`. Downstream shell, SSH, and Docker tasks receive dependency results through `FLOW_INPUT_JSON`; shell commands, SSH commands, Docker commands, webhook URLs, and webhook request bodies may use `{{input}}` and named `{variable}` placeholders from connected Variables nodes.
 
 ## Security Boundary
 

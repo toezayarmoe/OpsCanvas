@@ -14,7 +14,9 @@ const statusClass = {
 export default function NodeCard({ data, type, selected }) {
   const definition = NODE_CATALOG[type];
   const Icon = definition.icon;
-  const summary = type === "webhook"
+  const summary = type === "variable"
+    ? Object.entries(data.config.variables || {}).map(([key, value]) => `${key}=${value}`).join(", ")
+    : type === "webhook"
     ? `${data.config.method} ${data.config.url}`
     : type === "docker"
       ? data.config.image

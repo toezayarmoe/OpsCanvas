@@ -11,7 +11,7 @@ import ExecutionConsole from "./components/ExecutionConsole";
 import TemplateModal from "./components/TemplateModal";
 import AuthScreen from "./components/AuthScreen";
 
-const nodeTypes = { command: NodeCard, ssh: NodeCard, docker: NodeCard, webhook: NodeCard };
+const nodeTypes = { variable: NodeCard, command: NodeCard, ssh: NodeCard, docker: NodeCard, webhook: NodeCard };
 const emptyWorkflow = () => ({ name: "Untitled workflow", description: "", nodes: [], edges: [], templates: [] });
 const serializeNodes = (nodes) => nodes.map(({ id, type, position, data }) => ({
   id,

@@ -1,6 +1,6 @@
 # CLIFlow Node Usage Guide
 
-This guide explains how to build, connect, configure, and execute workflows in CLIFlow. It documents the behavior implemented by the current Shell command, SSH command, Docker container, and Webhook nodes.
+This guide explains how to build, connect, configure, and execute workflows in CLIFlow. It documents the behavior implemented by the current Variables, Shell command, SSH command, Docker container, and Webhook nodes.
 
 ## Start And Sign In
 
@@ -81,6 +81,68 @@ For one incoming dependency, `FLOW_INPUT_JSON` and `{{input}}` represent that no
 ```
 
 `FLOW_INPUT_JSON` is automatically set for Shell, SSH, and Docker nodes. `{{input}}` substitution is supported in Shell commands, SSH remote commands, Docker container commands, Webhook URLs, and Webhook request bodies.
+
+## Variables Node
+
+Use a Variables node to define reusable values and insert them into connected execution nodes with `{name}` placeholders.
+
+### Inspector Fields
+
+| Field | Meaning |
+| --- | --- |
+| Label | Display name shown on the canvas and in logs. |
+| Variables JSON | A JSON object whose keys become placeholder names. |
+| Run when a dependency fails | Allows execution after upstream failure or skip. |
+
+Variable names must begin with a letter or underscore and may contain letters, numbers, and underscores, such as `url`, `api_host`, or `RELEASE_1`.
+
+### Example: Curl A Configured URL
+
+1. Drag **Variables** to the canvas and set:
+
+```json
+{
+  "url": "google.com"
+}
+```
+
+2. Drag **Shell command** to the canvas and set its command:
+
+```sh
+curl https://{url}
+```
+
+3. Connect the Variables node's output handle to the Shell command node's input handle.
+4. Save and run the workflow.
+
+The command executed by the shell node is:
+
+```sh
+curl https://google.com
+```
+
+### Placeholder Scope
+
+Named placeholders are available only to nodes that receive the Variables node as an incoming dependency. Connect one Variables node directly to each task that uses its values. Multiple connected Variables nodes are merged; if they declare the same key, the later incoming value wins.
+
+For command nodes, `{name}` is inserted into command text before the shell runs. Use it only for operator-controlled values; do not substitute user-provided or external untrusted text into a shell command.
+
+The following fields accept `{name}` placeholders:
+
+- Shell **Command**
+- SSH **Host**, **User**, and **Remote command**
+- Docker **Image** and **Container command**
+- Webhook **URL** and **Request body**
+
+Variables node output is also visible as structured input:
+
+```json
+{
+  "variables": {
+    "url": "google.com"
+  }
+}
+```
 
 ## Shell Command Node
 

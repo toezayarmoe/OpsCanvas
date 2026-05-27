@@ -50,6 +50,12 @@ export default function NodeInspector({ node, onUpdate, onDelete, onClose }) {
         <Field label="Label">
           <input className={inputClass} value={node.data.label} onChange={(event) => onUpdate({ label: event.target.value })} />
         </Field>
+        {node.type === "variable" && (
+          <>
+            <JsonField label="Variables JSON" value={config.variables} onChange={(value) => setConfig("variables", value)} />
+            <p className="text-xs leading-5 text-zinc-500">Connect this node to a task and use values as <span className="font-mono text-zinc-300">{"{url}"}</span>.</p>
+          </>
+        )}
         {node.type === "command" && (
           <>
             <Field label="Shell"><input className={inputClass} value={config.shell} onChange={(event) => setConfig("shell", event.target.value)} /></Field>

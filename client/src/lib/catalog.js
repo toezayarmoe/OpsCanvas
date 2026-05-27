@@ -1,6 +1,13 @@
-import { Box, Globe, Server, TerminalSquare } from "lucide-react";
+import { Box, Braces, Globe, Server, TerminalSquare } from "lucide-react";
 
 export const NODE_CATALOG = {
+  variable: {
+    label: "Variables",
+    description: "Define reusable values",
+    accent: "cyan",
+    icon: Braces,
+    config: { variables: { url: "google.com" } },
+  },
   command: {
     label: "Shell command",
     description: "Execute on this host",

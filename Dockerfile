@@ -16,7 +16,7 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 RUN apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=3 update \
-    && apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=3 install -y --no-install-recommends openssh-client \
+    && apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=3 install -y --no-install-recommends curl openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
