@@ -1,0 +1,6 @@
+node_modules
+dist
+.vite
+.env
+server/data/workflows/*.json
+npm-debug.log*

@@ -1,0 +1,71 @@
+{
+  "id": "parallel-json-demo",
+  "name": "Parallel JSON report",
+  "description": "Parallel shell checks followed by a JSON aggregation step.",
+  "createdAt": "2026-05-27T00:00:00.000Z",
+  "updatedAt": "2026-05-27T00:00:00.000Z",
+  "templates": [],
+  "nodes": [
+    {
+      "id": "system-info",
+      "type": "command",
+      "position": { "x": 100, "y": 90 },
+      "data": {
+        "label": "System information",
+        "description": "Execute on this host",
+        "status": "idle",
+        "config": {
+          "shell": "/bin/sh",
+          "command": "printf '{\"kernel\":\"%s\"}\\n' \"$(uname -s)\"",
+          "env": {}
+        }
+      }
+    },
+    {
+      "id": "node-version",
+      "type": "command",
+      "position": { "x": 420, "y": 90 },
+      "data": {
+        "label": "Node runtime",
+        "description": "Execute on this host",
+        "status": "idle",
+        "config": {
+          "shell": "/bin/sh",
+          "command": "printf '{\"node\":\"%s\"}\\n' \"$(node --version)\"",
+          "env": {}
+        }
+      }
+    },
+    {
+      "id": "aggregate",
+      "type": "command",
+      "position": { "x": 265, "y": 345 },
+      "data": {
+        "label": "Aggregate outputs",
+        "description": "Execute on this host",
+        "status": "idle",
+        "config": {
+          "shell": "/bin/sh",
+          "command": "printf '{\"health\":\"ok\",\"inputs\":%s}\\n' \"$FLOW_INPUT_JSON\"",
+          "env": {}
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "system-to-aggregate",
+      "source": "system-info",
+      "target": "aggregate",
+      "animated": true,
+      "style": { "stroke": "#34d399" }
+    },
+    {
+      "id": "node-to-aggregate",
+      "source": "node-version",
+      "target": "aggregate",
+      "animated": true,
+      "style": { "stroke": "#34d399" }
+    }
+  ]
+}
