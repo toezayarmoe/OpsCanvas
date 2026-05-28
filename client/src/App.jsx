@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, { Background, Controls, MiniMap, addEdge, useEdgesState, useNodesState, useReactFlow } from "reactflow";
 import "reactflow/dist/style.css";
-import { Braces, ChevronLeft, ChevronRight, Clock3, Download, Files, LogOut, Play, Save, TerminalSquare, Trash2, Upload, Workflow } from "lucide-react";
+import { Braces, ChevronLeft, ChevronRight, Clock3, CopyPlus, Download, Files, History, Layers3, LogOut, Play, Save, TerminalSquare, Trash2, Upload, Workflow } from "lucide-react";
 import { api } from "./lib/api";
 import { createNode } from "./lib/catalog";
 import { exportWorkflowFile, importWorkflowFile } from "./lib/workflowFile";
@@ -14,6 +14,8 @@ import TemplateModal from "./components/TemplateModal";
 import AuthScreen from "./components/AuthScreen";
 import WorkflowInputsModal from "./components/WorkflowInputsModal";
 import WorkflowScheduleModal from "./components/WorkflowScheduleModal";
+import ExecutionHistoryPanel from "./components/ExecutionHistoryPanel";
+import WorkflowTemplatesPanel from "./components/WorkflowTemplatesPanel";
 
 const nodeTypes = { variable: NodeCard, output: NodeCard, parser: NodeCard, foreach: NodeCard, conditional: NodeCard, command: NodeCard, ssh: NodeCard, docker: NodeCard, webhook: NodeCard };
 const InteractiveTerminal = lazy(() => import("./components/InteractiveTerminal"));
@@ -50,6 +52,11 @@ export default function App() {
   const [execution, setExecution] = useState(null);
   const [artifacts, setArtifacts] = useState([]);
   const [artifactsOpen, setArtifactsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [historyDetail, setHistoryDetail] = useState(null);
+  const [workflowTemplates, setWorkflowTemplates] = useState([]);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [leftPanelWidth, setLeftPanelWidth] = useState(288);
@@ -83,6 +90,8 @@ export default function App() {
 
   const refreshWorkflows = useCallback(async () => setWorkflows(await api.list()), []);
   const refreshArtifacts = useCallback(async (workflowId) => setArtifacts(await api.artifacts(workflowId)), []);
+  const refreshHistory = useCallback(async (workflowId) => setHistory(await api.executions(workflowId)), []);
+  const refreshTemplates = useCallback(async () => setWorkflowTemplates(await api.templates()), []);
 
   const loadWorkflow = useCallback(async (id) => {
     const [loaded, outputFiles] = await Promise.all([api.get(id), api.artifacts(id)]);
@@ -95,6 +104,10 @@ export default function App() {
     setExecution(null);
     setArtifacts(outputFiles);
     setArtifactsOpen(false);
+    setHistoryOpen(false);
+    setHistory([]);
+    setHistoryDetail(null);
+    setTemplatesOpen(false);
     setDirty(false);
   }, [setEdges, setNodes]);
 
@@ -122,6 +135,7 @@ export default function App() {
       try {
         const available = await api.list();
         setWorkflows(available);
+        await refreshTemplates();
         if (available.length) {
           await loadWorkflow(available[0].id);
         } else {
@@ -133,7 +147,7 @@ export default function App() {
         handleRequestError(error);
       }
     })();
-  }, [loadWorkflow, refreshWorkflows, user]);
+  }, [loadWorkflow, refreshTemplates, refreshWorkflows, user]);
 
   useEffect(() => () => socket.current?.close(), []);
 
@@ -203,6 +217,7 @@ export default function App() {
       if (event.type === "execution.completed") {
         setExecution((current) => ({ ...current, status: event.status }));
         refreshArtifacts(workflowId).catch(handleRequestError);
+        refreshHistory(workflowId).catch(handleRequestError);
       }
     };
     connection.onerror = () => setNotice("Live log connection was interrupted.");
@@ -318,9 +333,58 @@ export default function App() {
     setEvents([]);
     setArtifacts([]);
     setArtifactsOpen(false);
+    setHistoryOpen(false);
+    setHistory([]);
+    setHistoryDetail(null);
+    setWorkflowTemplates([]);
+    setTemplatesOpen(false);
     setTerminalOpen(false);
     setInputsModal(null);
     setScheduleModal(false);
+  };
+
+  const openHistory = async () => {
+    try {
+      const runs = await api.executions(workflow.id);
+      setHistory(runs);
+      setHistoryOpen(true);
+      if (runs[0]) setHistoryDetail(await api.execution(runs[0].id));
+      else setHistoryDetail(null);
+    } catch (error) { handleRequestError(error); }
+  };
+
+  const selectHistory = async (id) => {
+    try { setHistoryDetail(await api.execution(id)); } catch (error) { handleRequestError(error); }
+  };
+
+  const saveAsWorkflowTemplate = async () => {
+    try {
+      const saved = await saveWorkflow();
+      if (!saved) return;
+      await api.createTemplate({
+        name: saved.name,
+        description: saved.description || "",
+        workflow: { ...saved, nodes: serializeNodes(nodes), edges: serializeEdges(edges) },
+      });
+      await refreshTemplates();
+      setTemplatesOpen(true);
+    } catch (error) { handleRequestError(error); }
+  };
+
+  const openTemplates = async () => {
+    try {
+      await refreshTemplates();
+      setTemplatesOpen(true);
+    } catch (error) { handleRequestError(error); }
+  };
+
+  const createFromWorkflowTemplate = async (id) => {
+    try {
+      const created = await api.createFromTemplate(id);
+      await refreshWorkflows();
+      await loadWorkflow(created.id);
+      setTemplatesOpen(false);
+    } catch (error) { handleRequestError(error); }
   };
 
   if (sessionLoading) return <div className="flex h-screen items-center justify-center bg-[#080b12] text-sm text-zinc-500">Loading CLIFlow...</div>;
@@ -390,6 +454,15 @@ export default function App() {
             <button onClick={() => { setArtifactsOpen(true); refreshArtifacts(workflow.id).catch(handleRequestError); }} className="flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
               <Files size={15} /> Outputs {artifacts.length ? `(${artifacts.length})` : ""}
             </button>
+            <button onClick={openHistory} className="flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
+              <History size={15} /> History
+            </button>
+            <button onClick={openTemplates} className="flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
+              <Layers3 size={15} /> Templates
+            </button>
+            <button onClick={saveAsWorkflowTemplate} title="Save current workflow as reusable template" className="flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
+              <CopyPlus size={15} /> Save template
+            </button>
             <button onClick={() => saveWorkflow().catch(handleRequestError)} className="flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
               <Save size={15} /> {dirty ? "Save changes" : "Saved"}
             </button>
@@ -415,6 +488,29 @@ export default function App() {
               try {
                 await api.removeArtifact(id);
                 await refreshArtifacts(workflow.id);
+              } catch (error) { handleRequestError(error); }
+            }}
+          />
+        )}
+        {historyOpen && (
+          <ExecutionHistoryPanel
+            executions={history}
+            detail={historyDetail}
+            onClose={() => setHistoryOpen(false)}
+            onRefresh={() => openHistory()}
+            onSelect={selectHistory}
+          />
+        )}
+        {templatesOpen && (
+          <WorkflowTemplatesPanel
+            templates={workflowTemplates}
+            onClose={() => setTemplatesOpen(false)}
+            onRefresh={refreshTemplates}
+            onCreateFromTemplate={createFromWorkflowTemplate}
+            onDelete={async (id) => {
+              try {
+                await api.removeTemplate(id);
+                await refreshTemplates();
               } catch (error) { handleRequestError(error); }
             }}
           />

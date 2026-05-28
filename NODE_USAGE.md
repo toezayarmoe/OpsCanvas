@@ -123,6 +123,47 @@ every 30 seconds:
 
 Scheduled executions run under the workflow owner. Logs are streamed only while a client is connected to that execution, so important scheduled results should be saved with an Output file node or sent to an external system.
 
+## Run History
+
+Use **History** in the workflow header to inspect previous runs for the current workflow. CLIFlow stores execution summaries, node results, errors, and final node logs in MySQL.
+
+History detail includes:
+
+| Section | Meaning |
+| --- | --- |
+| Run summary | Status, start time, and completion time. |
+| Node results | Per-node status and error message. |
+| Logs | Captured stdout/stderr log events grouped by node ID. |
+
+Pseudocode:
+
+```text
+when workflow starts:
+  insert execution row with pending node states
+
+while workflow runs:
+  stream logs live over WebSocket
+
+when workflow finishes:
+  update execution row with final node results and captured logs
+```
+
+The history page is for inspection and troubleshooting. For durable output files, reports, or scan data, use an Output file node.
+
+## Reusable Workflow Templates
+
+Use **Save template** in the workflow header to save the current workflow as a reusable template. Use **Templates** to create a new workflow from a saved template or delete templates you no longer need.
+
+Template behavior:
+
+| Action | Meaning |
+| --- | --- |
+| Save template | Captures the current saved workflow nodes, edges, inputs, and custom node templates. |
+| Create workflow | Copies the template into a new workflow named `<template name> copy`. |
+| Delete template | Removes the reusable template without deleting workflows created from it. |
+
+Schedules are disabled when a workflow template is created or used. This prevents a copied template from accidentally starting automatic scheduled runs.
+
 ### Structured Output
 
 If a Shell, SSH, or Docker node writes valid JSON to standard output and exits successfully, the JSON becomes its output:

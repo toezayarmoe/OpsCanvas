@@ -62,5 +62,35 @@ export async function initializeDatabase() {
       INDEX idx_artifacts_workflow_created (user_id, workflow_id, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS executions (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      user_id CHAR(36) NOT NULL,
+      workflow_id VARCHAR(64) NOT NULL,
+      workflow_name VARCHAR(160) NOT NULL,
+      status VARCHAR(24) NOT NULL,
+      inputs JSON NOT NULL,
+      nodes JSON NOT NULL,
+      events JSON NOT NULL,
+      started_at DATETIME(3) NOT NULL,
+      completed_at DATETIME(3) NULL,
+      CONSTRAINT fk_executions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_executions_user_started (user_id, started_at),
+      INDEX idx_executions_workflow_started (user_id, workflow_id, started_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS workflow_templates (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      user_id CHAR(36) NOT NULL,
+      name VARCHAR(160) NOT NULL,
+      description VARCHAR(1000) NOT NULL DEFAULT '',
+      definition JSON NOT NULL,
+      created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+      CONSTRAINT fk_workflow_templates_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_workflow_templates_user_updated (user_id, updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
   await pool.execute("DELETE FROM sessions WHERE expires_at < NOW(3)");
 }

@@ -10,8 +10,9 @@ import { authenticationSucceeded, checkAuthRateLimit, createUser, establishSessi
 import { assertProductionConfig, config } from "./config.js";
 import { initializeDatabase } from "./db.js";
 import { cancelExecution, getExecution, startExecution, subscribeExecution } from "./engine.js";
+import { getExecutionHistory, listExecutionHistory } from "./history.js";
 import { deleteArtifact, getArtifact, listArtifacts } from "./artifacts.js";
-import { createWorkflow, deleteWorkflow, getWorkflow, listWorkflows, updateWorkflow } from "./store.js";
+import { createWorkflow, createWorkflowFromTemplate, createWorkflowTemplate, deleteWorkflow, deleteWorkflowTemplate, getWorkflow, listWorkflowTemplates, listWorkflows, updateWorkflow } from "./store.js";
 import { openTerminal } from "./terminal.js";
 import { startScheduler } from "./scheduler.js";
 
@@ -104,14 +105,42 @@ app.post("/api/workflows/:id/run", async (req, res, next) => {
 });
 
 app.use("/api/executions", requireTrustedOrigin, requireAuth);
-app.get("/api/executions/:id", (req, res) => {
-  const execution = getExecution(req.params.id, req.user.id);
-  if (!execution) return res.status(404).json({ error: "Execution not found." });
-  res.json(execution);
+app.get("/api/executions", async (req, res, next) => {
+  try { res.json(await listExecutionHistory(req.user.id, req.query.workflowId)); } catch (error) { next(error); }
+});
+app.get("/api/executions/:id", async (req, res, next) => {
+  try {
+    const running = getExecution(req.params.id, req.user.id);
+    if (running) return res.json(running);
+    const execution = await getExecutionHistory(req.user.id, req.params.id);
+    if (!execution) return res.status(404).json({ error: "Execution not found." });
+    res.json(execution);
+  } catch (error) { next(error); }
 });
 app.post("/api/executions/:id/cancel", (req, res) => {
   if (!cancelExecution(req.params.id, req.user.id)) return res.status(409).json({ error: "Execution is not running." });
   res.status(202).json({ status: "cancelling" });
+});
+
+app.use("/api/templates", requireTrustedOrigin, requireAuth);
+app.get("/api/templates", async (req, res, next) => {
+  try { res.json(await listWorkflowTemplates(req.user.id)); } catch (error) { next(error); }
+});
+app.post("/api/templates", async (req, res, next) => {
+  try { res.status(201).json(await createWorkflowTemplate(req.user.id, req.body)); } catch (error) { next(error); }
+});
+app.post("/api/templates/:id/create-workflow", async (req, res, next) => {
+  try {
+    const workflow = await createWorkflowFromTemplate(req.user.id, req.params.id);
+    if (!workflow) return res.status(404).json({ error: "Template not found." });
+    res.status(201).json(workflow);
+  } catch (error) { next(error); }
+});
+app.delete("/api/templates/:id", async (req, res, next) => {
+  try {
+    if (!(await deleteWorkflowTemplate(req.user.id, req.params.id))) return res.status(404).json({ error: "Template not found." });
+    res.status(204).end();
+  } catch (error) { next(error); }
 });
 
 app.use("/api/artifacts", requireTrustedOrigin, requireAuth);

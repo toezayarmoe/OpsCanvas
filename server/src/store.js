@@ -68,6 +68,20 @@ function fromRow(row) {
   };
 }
 
+function templateFromRow(row) {
+  const definition = parseDefinition(row.definition);
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    workflow: definition,
+    nodeCount: Array.isArray(definition.nodes) ? definition.nodes.length : 0,
+    edgeCount: Array.isArray(definition.edges) ? definition.edges.length : 0,
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
+  };
+}
+
 async function seedWorkflows(userId) {
   const files = await fs.readdir(seedsDir).catch(() => []);
   await Promise.all(
@@ -136,5 +150,65 @@ export async function updateWorkflow(userId, id, body) {
 
 export async function deleteWorkflow(userId, id) {
   const [result] = await pool.execute("DELETE FROM workflows WHERE user_id = ? AND id = ?", [userId, id]);
+  return result.affectedRows > 0;
+}
+
+export async function listWorkflowTemplates(userId) {
+  const [rows] = await pool.execute(
+    `SELECT id, name, description, definition, created_at, updated_at
+       FROM workflow_templates WHERE user_id = ? ORDER BY updated_at DESC`,
+    [userId],
+  );
+  return rows.map(templateFromRow);
+}
+
+export async function createWorkflowTemplate(userId, body) {
+  const id = randomUUID();
+  const source = normalizeWorkflow(body.workflow || body, body.workflow?.id || body.id || randomUUID());
+  const templateName = typeof body.name === "string" && body.name.trim()
+    ? body.name.trim().slice(0, 160)
+    : source.name;
+  const description = typeof body.description === "string" ? body.description.slice(0, 1000) : source.description || "";
+  const definition = {
+    ...source,
+    id: source.id || randomUUID(),
+    name: source.name || templateName,
+    schedule: { enabled: false, cron: "", inputs: {} },
+  };
+  await pool.execute(
+    "INSERT INTO workflow_templates (id, user_id, name, description, definition) VALUES (?, ?, ?, ?, ?)",
+    [id, userId, templateName, description, JSON.stringify(definition)],
+  );
+  const [rows] = await pool.execute(
+    `SELECT id, name, description, definition, created_at, updated_at
+       FROM workflow_templates WHERE user_id = ? AND id = ? LIMIT 1`,
+    [userId, id],
+  );
+  return templateFromRow(rows[0]);
+}
+
+export async function createWorkflowFromTemplate(userId, templateId) {
+  const [rows] = await pool.execute(
+    `SELECT id, name, description, definition, created_at, updated_at
+       FROM workflow_templates WHERE user_id = ? AND id = ? LIMIT 1`,
+    [userId, templateId],
+  );
+  if (!rows.length) return null;
+  const template = templateFromRow(rows[0]);
+  const workflow = normalizeWorkflow({
+    ...template.workflow,
+    id: randomUUID(),
+    name: `${template.name} copy`,
+    schedule: { enabled: false, cron: "", inputs: {} },
+  });
+  await pool.execute(
+    "INSERT INTO workflows (id, user_id, name, description, definition) VALUES (?, ?, ?, ?, ?)",
+    [workflow.id, userId, workflow.name, workflow.description, JSON.stringify(workflow)],
+  );
+  return getWorkflow(userId, workflow.id);
+}
+
+export async function deleteWorkflowTemplate(userId, id) {
+  const [result] = await pool.execute("DELETE FROM workflow_templates WHERE user_id = ? AND id = ?", [userId, id]);
   return result.affectedRows > 0;
 }

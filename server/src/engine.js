@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { saveArtifact } from "./artifacts.js";
 import { executeNode } from "./executors.js";
+import { recordExecutionCompleted, recordExecutionStarted } from "./history.js";
 
 const executions = new Map();
 const EVENT_LIMIT = 2000;
@@ -121,6 +122,7 @@ export function startExecution(workflow, userId, runInputs = {}) {
     id: randomUUID(),
     userId,
     workflowId: workflow.id,
+    workflowName: workflow.name || "Untitled workflow",
     status: "running",
     startedAt: new Date().toISOString(),
     completedAt: null,
@@ -134,6 +136,7 @@ export function startExecution(workflow, userId, runInputs = {}) {
   };
   executions.set(execution.id, execution);
   emit(execution, { type: "execution.started", workflowId: workflow.id });
+  execution.historyReady = recordExecutionStarted(execution).catch((error) => console.error("Unable to record execution start:", error.message));
   queueMicrotask(() => runGraph(execution, graph));
   return getExecution(execution.id, userId);
 }
@@ -183,6 +186,8 @@ async function runGraph(execution, graph) {
       : "success";
   execution.completedAt = new Date().toISOString();
   emit(execution, { type: "execution.completed", status: execution.status, results: Object.fromEntries(execution.results) });
+  await execution.historyReady;
+  await recordExecutionCompleted(execution).catch((error) => console.error("Unable to record execution completion:", error.message));
   await rm(execution.workspacePath, { recursive: true, force: true }).catch(() => {});
 }
 

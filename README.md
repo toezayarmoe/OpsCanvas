@@ -73,8 +73,8 @@ Nodes without dependencies execute immediately and in parallel. Nodes with depen
 | Conditional branching node | Implemented |
 | Retry and timeout per node | Implemented |
 | Scheduler / cron runs | Implemented |
-| Run history detail page | Planned |
-| Reusable workflow templates | Planned |
+| Run history detail page | Implemented |
+| Reusable workflow templates | Implemented |
 
 Useful commands:
 
@@ -153,7 +153,8 @@ Authenticated routes:
 - `GET /api/auth/me`
 - `GET/POST /api/workflows`, `GET/PUT/DELETE /api/workflows/:id`
 - `POST /api/workflows/:id/run`
-- `GET /api/executions/:id`, `POST /api/executions/:id/cancel`
+- `GET /api/executions?workflowId=<id>`, `GET /api/executions/:id`, `POST /api/executions/:id/cancel`
+- `GET/POST /api/templates`, `POST /api/templates/:id/create-workflow`, `DELETE /api/templates/:id`
 - `GET /api/artifacts?workflowId=<id>`, `GET /api/artifacts/:id/download`, `DELETE /api/artifacts/:id`
 - `ws(s)://<host>/ws?executionId=<id>` for owner-authorized terminal events
 - `ws(s)://<host>/terminal` for an authenticated interactive shell when explicitly enabled
@@ -169,6 +170,8 @@ The full operator guide is in [NODE_USAGE.md](NODE_USAGE.md). Key runtime facts:
 - **Conditional** gates downstream nodes based on a JSON path, text match, regex, numeric comparison, or item count. Use two Conditional nodes with inverse rules for true and false branches.
 - **Retry / timeout** settings are available on every node. Retries rerun the node after failure; timeout kills the current attempt.
 - **Scheduler** runs enabled workflows from five-field cron expressions such as `*/15 * * * *` using server local time.
+- **Run history** stores completed execution status, node results, and logs in MySQL. Use **History** to inspect previous runs.
+- **Reusable workflow templates** save the current workflow as a user-owned template and create new workflows from it later.
 - **Output file** stores connected node output or a temporary execution-workspace file as an authenticated downloadable artifact in MySQL. Shell nodes in one run may share relative files, for example `subfinder ... > file1.txt` followed by `cat file1.txt file2.txt > final_sub.txt`.
 - **Shell command** runs via the chosen shell (`/bin/sh -lc` by default) in the application execution environment. With Docker Compose, that means inside the `app` container.
 - **Included shell tools** in the Compose app image: ProjectDiscovery `httpx v1.9.0`, ProjectDiscovery `subfinder v2.14.0`, `gobuster v3.8.2`, and selected SecLists wordlists at `/opt/seclists` with `SECLISTS=/opt/seclists`. Use them only against assets you are authorized to assess.

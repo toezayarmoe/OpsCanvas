@@ -26,6 +26,12 @@ export const api = {
   remove: (id) => request(`/api/workflows/${id}`, { method: "DELETE" }),
   run: (id, inputs = {}) => request(`/api/workflows/${id}/run`, { method: "POST", body: JSON.stringify({ inputs }) }),
   cancel: (id) => request(`/api/executions/${id}/cancel`, { method: "POST" }),
+  executions: (workflowId) => request(`/api/executions${workflowId ? `?workflowId=${encodeURIComponent(workflowId)}` : ""}`),
+  execution: (id) => request(`/api/executions/${id}`),
   artifacts: (workflowId) => request(`/api/artifacts?workflowId=${encodeURIComponent(workflowId)}`),
   removeArtifact: (id) => request(`/api/artifacts/${id}`, { method: "DELETE" }),
+  templates: () => request("/api/templates"),
+  createTemplate: (template) => request("/api/templates", { method: "POST", body: JSON.stringify(template) }),
+  createFromTemplate: (id) => request(`/api/templates/${id}/create-workflow`, { method: "POST" }),
+  removeTemplate: (id) => request(`/api/templates/${id}`, { method: "DELETE" }),
 };
