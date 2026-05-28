@@ -116,6 +116,40 @@ export default function NodeInspector({ width, node, onUpdate, onDelete, onClose
             <p className="text-xs leading-5 text-zinc-500">Consumes upstream stdout, text, JSON arrays, or items fields. Text lines are best for feeding Output file nodes or shell scripts.</p>
           </>
         )}
+        {node.type === "foreach" && (
+          <>
+            <Field label="Shell"><input className={inputClass} value={config.shell} onChange={(event) => setConfig("shell", event.target.value)} /></Field>
+            <Field label="Command per item">
+              <textarea className={`${inputClass} h-32 font-mono text-xs`} value={config.command} onChange={(event) => setConfig("command", event.target.value)} />
+            </Field>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Item variable">
+                <input className={inputClass} value={config.itemVariable || "item"} onChange={(event) => setConfig("itemVariable", event.target.value)} />
+              </Field>
+              <Field label="Concurrency">
+                <input className={inputClass} type="number" min="1" max="50" value={config.concurrency || 1} onChange={(event) => setConfig("concurrency", Number(event.target.value))} />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs text-zinc-400">
+              {[
+                ["splitLines", "Split lines"],
+                ["trim", "Trim values"],
+                ["removeEmpty", "Remove empty"],
+                ["continueOnError", "Continue on error"],
+              ].map(([field, label]) => (
+                <label key={field} className="flex items-center gap-2 rounded-lg border border-zinc-800 p-3">
+                  <input
+                    type="checkbox"
+                    checked={field === "continueOnError" ? Boolean(config[field]) : config[field] !== false}
+                    onChange={(event) => setConfig(field, event.target.checked)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs leading-5 text-zinc-500">Consumes upstream parser items, arrays, or stdout lines. Use <span className="font-mono text-zinc-300">{"{item}"}</span> in the command, or read <span className="font-mono text-zinc-300">FLOW_ITEM</span> and <span className="font-mono text-zinc-300">FLOW_ITEM_INDEX</span>.</p>
+          </>
+        )}
         {node.type === "command" && (
           <>
             <Field label="Shell"><input className={inputClass} value={config.shell} onChange={(event) => setConfig("shell", event.target.value)} /></Field>

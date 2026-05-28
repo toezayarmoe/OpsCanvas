@@ -85,6 +85,20 @@ function executeParser(config, inputs, context) {
   return { items, stdout: items.join("\n"), count: items.length };
 }
 
+function extractForEachItems(config, inputs) {
+  const splitLines = config.splitLines !== false;
+  const trim = config.trim !== false;
+  const removeEmpty = config.removeEmpty !== false;
+  let items = inputs.flatMap((input) => extractParserValues(input.output));
+  items = items.flatMap((item) => {
+    const value = typeof item === "string" ? item : JSON.stringify(item);
+    return splitLines ? value.split(/\r?\n/) : [value];
+  });
+  if (trim) items = items.map((item) => item.trim());
+  if (removeEmpty) items = items.filter(Boolean);
+  return items;
+}
+
 function runProcess(command, args, options, context) {
   return new Promise((resolve, reject) => {
     const process = spawn(command, args, { ...options, stdio: ["ignore", "pipe", "pipe"] });
@@ -142,6 +156,77 @@ async function readWorkspaceFile(workspacePath, sourcePath) {
   return fs.readFile(resolvedPath);
 }
 
+async function executeForEach(config, inputs, context, variables) {
+  if (!config.command?.trim()) throw new Error("For Each command is required.");
+  const itemVariable = config.itemVariable || "item";
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(itemVariable)) throw new Error("For Each item variable must be a valid placeholder name.");
+  const concurrency = Math.max(1, Math.min(50, Number(config.concurrency) || 1));
+  const items = extractForEachItems(config, inputs);
+  const results = new Array(items.length);
+  const failures = [];
+  let nextIndex = 0;
+  let stopped = false;
+
+  context.log("stdout", `For Each running ${items.length} item(s) with concurrency ${concurrency}.\n`);
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      if (stopped) return;
+      const index = nextIndex;
+      nextIndex += 1;
+      const item = items[index];
+      const loopVariables = { ...variables, [itemVariable]: item, item, index };
+      context.log("stdout", `[${index + 1}/${items.length}] ${item}\n`);
+      try {
+        const output = await runProcess(config.shell || "/bin/sh", ["-lc", interpolate(config.command, inputs, loopVariables)], {
+          cwd: context.workspacePath,
+          env: {
+            ...process.env,
+            ...(config.env || {}),
+            FLOW_INPUT_JSON: stringifyInput(inputs),
+            FLOW_ITEM: String(item),
+            FLOW_ITEM_INDEX: String(index),
+            FLOW_WORKSPACE: context.workspacePath,
+          },
+        }, context);
+        results[index] = { item, index, status: "success", output };
+      } catch (error) {
+        const failure = {
+          item,
+          index,
+          status: "failed",
+          error: { message: error.message, details: error.details || null },
+        };
+        results[index] = failure;
+        failures.push(failure);
+        context.log("stderr", `[${index + 1}/${items.length}] failed: ${error.message}\n`);
+        if (!config.continueOnError) stopped = true;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(items.length, 1)) }, () => worker()));
+  const completed = results.filter(Boolean);
+  if (failures.length && !config.continueOnError) {
+    const error = new Error(`For Each failed on ${failures.length} of ${items.length} item(s).`);
+    error.details = { results: completed };
+    throw error;
+  }
+
+  const stdout = completed
+    .map((result) => result.output?.stdout)
+    .filter((value) => typeof value === "string" && value.length)
+    .join("\n");
+  return {
+    items,
+    results: completed,
+    count: items.length,
+    successCount: completed.filter((result) => result.status === "success").length,
+    failedCount: failures.length,
+    stdout,
+  };
+}
+
 export async function executeNode(node, inputs, context) {
   const config = node.data?.config || {};
   const inputJson = stringifyInput(inputs);
@@ -178,6 +263,9 @@ export async function executeNode(node, inputs, context) {
 
     case "parser":
       return executeParser(config, inputs, context);
+
+    case "foreach":
+      return executeForEach(config, inputs, context, variables);
 
     case "command":
       if (!config.command?.trim()) throw new Error("Shell command is required.");

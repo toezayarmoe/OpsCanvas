@@ -1,6 +1,6 @@
 # CLIFlow Node Usage Guide
 
-This guide explains how to build, connect, configure, and execute workflows in CLIFlow. It documents the behavior implemented by the current Variables, Parser / Filter, Output file, Shell command, SSH command, Docker container, and Webhook nodes.
+This guide explains how to build, connect, configure, and execute workflows in CLIFlow. It documents the behavior implemented by the current Variables, Parser / Filter, For Each, Output file, Shell command, SSH command, Docker container, and Webhook nodes.
 
 ## Start And Sign In
 
@@ -158,6 +158,7 @@ For command nodes, `{name}` is inserted into command text before the shell runs.
 The following fields accept `{name}` placeholders:
 
 - Shell **Command**
+- For Each **Command per item**
 - SSH **Host**, **User**, and **Remote command**
 - Docker **Image** and **Container command**
 - Webhook **URL** and **Request body**
@@ -310,6 +311,105 @@ File content: {{input}}
 ```
 
 Because Text lines mode includes `stdout`, the Output file node saves the cleaned newline-separated list.
+
+## For Each Node
+
+Use a For Each node when one upstream command produces a list and you want to run another command for every item. It consumes Parser / Filter output, JSON arrays, objects with `items`, `lines`, or `results`, or plain stdout lines.
+
+### Inspector Fields
+
+| Field | Meaning |
+| --- | --- |
+| Shell | Executable used to run each command; defaults to `/bin/sh`. |
+| Command per item | Script passed as `<shell> -lc <command>` once for every item. |
+| Item variable | Placeholder name for the current item; defaults to `item`, so use `{item}`. |
+| Concurrency | Number of item commands to run in parallel, from `1` to `50`. |
+| Split lines | Splits upstream text on newlines before iteration. |
+| Trim values | Removes leading and trailing whitespace from each item. |
+| Remove empty | Drops blank items. |
+| Continue on error | Keeps processing remaining items after an item command fails. |
+| Run when a dependency fails | Allows execution after upstream failure or skip. |
+
+For every item command, CLIFlow sets:
+
+```text
+FLOW_ITEM=<current item>
+FLOW_ITEM_INDEX=<zero-based item number>
+FLOW_INPUT_JSON=<original connected input>
+FLOW_WORKSPACE=<temporary execution directory>
+```
+
+The node returns:
+
+```json
+{
+  "items": ["one", "two"],
+  "results": [
+    {
+      "item": "one",
+      "index": 0,
+      "status": "success",
+      "output": {
+        "stdout": "..."
+      }
+    }
+  ],
+  "count": 2,
+  "successCount": 2,
+  "failedCount": 0,
+  "stdout": "combined stdout"
+}
+```
+
+### Example: Probe Every Parsed Subdomain
+
+Create this graph:
+
+```text
+Shell command -> Parser / Filter -> For Each -> Output file
+```
+
+First **Shell command**:
+
+```sh
+subfinder -d {domain} -silent
+```
+
+**Parser / Filter**:
+
+```text
+Split lines: enabled
+Trim values: enabled
+Remove empty: enabled
+Dedupe: enabled
+Output mode: Text lines
+```
+
+**For Each**:
+
+```text
+Command per item: httpx -u https://{item} -silent
+Item variable: item
+Concurrency: 10
+Continue on error: enabled
+```
+
+**Output file**:
+
+```text
+Filename: live-hosts.txt
+Content type: text/plain
+Source: Connected node output
+File content: {{input}}
+```
+
+The Output file saves the combined stdout from all successful item commands. For more control, write to files in the shared workspace:
+
+```sh
+httpx -u https://"$FLOW_ITEM" -silent >> live-hosts.txt
+```
+
+Then connect a later Output file node with **Source: Workspace file path** and **Workspace file path: live-hosts.txt**.
 
 ### Example: Download Curl Output
 

@@ -21,6 +21,8 @@ export default function NodeCard({ data, type, selected }) {
       ? `${data.config.sourceMode === "workspace" ? `${data.config.sourcePath || "file"} -> ` : ""}${data.config.filename}`
     : type === "parser"
       ? `${data.config.dedupe === false ? "keep duplicates" : "dedupe"} -> ${data.config.outputMode || "lines"}`
+    : type === "foreach"
+      ? `${data.config.concurrency || 1}x ${data.config.command || "command"}`
     : type === "webhook"
     ? `${data.config.method} ${data.config.url}`
     : type === "docker"

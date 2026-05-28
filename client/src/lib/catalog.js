@@ -1,4 +1,4 @@
-import { Box, Braces, FileOutput, Filter, Globe, Server, TerminalSquare } from "lucide-react";
+import { Box, Braces, FileOutput, Filter, Globe, Repeat2, Server, TerminalSquare } from "lucide-react";
 
 export const NODE_CATALOG = {
   variable: {
@@ -21,6 +21,22 @@ export const NODE_CATALOG = {
     accent: "teal",
     icon: Filter,
     config: { splitLines: true, trim: true, removeEmpty: true, dedupe: true, includeRegex: "", excludeRegex: "", limit: 0, outputMode: "lines" },
+  },
+  foreach: {
+    label: "For Each",
+    description: "Run a command per item",
+    accent: "fuchsia",
+    icon: Repeat2,
+    config: {
+      shell: "/bin/sh",
+      command: "echo {item}",
+      itemVariable: "item",
+      concurrency: 3,
+      splitLines: true,
+      trim: true,
+      removeEmpty: true,
+      continueOnError: false,
+    },
   },
   command: {
     label: "Shell command",
