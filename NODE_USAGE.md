@@ -1,6 +1,6 @@
 # CLIFlow Node Usage Guide
 
-This guide explains how to build, connect, configure, and execute workflows in CLIFlow. It documents the behavior implemented by the current Variables, Parser / Filter, For Each, Output file, Shell command, SSH command, Docker container, and Webhook nodes.
+This guide explains how to build, connect, configure, and execute workflows in CLIFlow. It documents the behavior implemented by the current Variables, Parser / Filter, For Each, Conditional, Output file, Shell command, SSH command, Docker container, and Webhook nodes.
 
 ## Start And Sign In
 
@@ -410,6 +410,78 @@ httpx -u https://"$FLOW_ITEM" -silent >> live-hosts.txt
 ```
 
 Then connect a later Output file node with **Source: Workspace file path** and **Workspace file path: live-hosts.txt**.
+
+## Conditional Node
+
+Use a Conditional node to continue only when upstream output matches a rule. When the condition is true, child nodes run. When false, the Conditional node is marked skipped, so connected child nodes are skipped unless they enable **Run when a dependency fails**.
+
+For a true/false split, connect the same upstream node to two Conditional nodes:
+
+```text
+Parser / Filter -> Has results     -> Run probing
+Parser / Filter -> No results      -> Save empty report
+```
+
+Set the second Conditional node to the inverse rule.
+
+### Inspector Fields
+
+| Field | Meaning |
+| --- | --- |
+| JSON path | Dot path inside upstream output, such as `stdout`, `count`, `items.0`, or `results.0.status`. Leave blank to test the whole input. |
+| Operator | Match rule: truthy, falsy, exists, equals, contains, regex, numeric comparison, or count comparison. |
+| Compare value | Value used by equality, contains, regex, numeric, and count operators. |
+| Case sensitive | Controls text comparisons and regex matching. |
+| Invert result | Reverses the final condition, useful for false branches. |
+| Run when a dependency fails | Allows the condition itself to run after upstream failure or skip. |
+
+### Example: Run Only When Parser Found Items
+
+Create this graph:
+
+```text
+Shell command -> Parser / Filter -> Conditional -> For Each
+```
+
+Configure **Conditional**:
+
+```text
+JSON path: items
+Operator: Count greater than
+Compare value: 0
+Invert result: disabled
+```
+
+If the parser found at least one item, the For Each node runs. If no items were found, the branch is skipped.
+
+### Example: True And False Branches
+
+Create this graph:
+
+```text
+Parser / Filter -> Conditional: Has results -> For Each
+Parser / Filter -> Conditional: No results  -> Output file
+```
+
+**Has results**:
+
+```text
+JSON path: items
+Operator: Count greater than
+Compare value: 0
+Invert result: disabled
+```
+
+**No results**:
+
+```text
+JSON path: items
+Operator: Count greater than
+Compare value: 0
+Invert result: enabled
+```
+
+Only one branch continues.
 
 ### Example: Download Curl Output
 

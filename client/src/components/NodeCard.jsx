@@ -23,6 +23,8 @@ export default function NodeCard({ data, type, selected }) {
       ? `${data.config.dedupe === false ? "keep duplicates" : "dedupe"} -> ${data.config.outputMode || "lines"}`
     : type === "foreach"
       ? `${data.config.concurrency || 1}x ${data.config.command || "command"}`
+    : type === "conditional"
+      ? `${data.config.invert ? "not " : ""}${data.config.path || "input"} ${data.config.operator || "truthy"} ${data.config.value || ""}`
     : type === "webhook"
     ? `${data.config.method} ${data.config.url}`
     : type === "docker"

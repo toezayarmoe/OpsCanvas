@@ -5,7 +5,7 @@ CLIFlow is a visual automation studio for composing and executing dependency-bas
 ## Features
 
 - Dark workflow editor with drag-and-drop nodes, typed inspector, custom templates, minimap, workflow logs, and an optional interactive terminal.
-- Variables, parser/filter, For Each, shell, SSH, Docker container, webhook, and downloadable output-file nodes.
+- Variables, parser/filter, For Each, conditional, shell, SSH, Docker container, webhook, and downloadable output-file nodes.
 - App-container Shell workflows include pinned `httpx`, `subfinder`, `gobuster`, and selected SecLists wordlists for authorized reconnaissance tasks.
 - Parallel DAG scheduler with cycle validation, failure propagation, cancellation, and JSON data chaining.
 - MySQL persistence for users, sessions, and per-user workflows.
@@ -23,7 +23,7 @@ server/
   src/store.js              User-scoped workflow persistence
   src/artifacts.js          User-scoped downloadable output-file persistence
   src/engine.js             Parallel DAG scheduler and event stream
-  src/executors.js          Parser, For Each, Shell, SSH, Docker and webhook runtimes
+  src/executors.js          Parser, For Each, Conditional, Shell, SSH, Docker and webhook runtimes
   seeds/                    Example workflow copied per account on first listing
 compose.yaml                Application and MySQL service definitions
 Dockerfile                  Multi-stage application container image
@@ -60,7 +60,7 @@ The development `.env.example` enables the authenticated interactive terminal. I
 6. Use **Export** to download the current canvas as a `.cliflow.json` file, or **Import** to create a new workflow from a previously exported file.
 7. Use **Inputs** to define workflow-level values such as `{domain}` or `{wordlist}`. These values are available to every node when the workflow runs.
 
-Nodes without dependencies execute immediately and in parallel. Nodes with dependencies start once all incoming nodes complete. See [NODE_USAGE.md](NODE_USAGE.md) for complete Variables, Parser/Filter, For Each, Shell, SSH, Docker, Webhook, Output File, JSON data-flow, templates, error-handling, and log-streaming instructions.
+Nodes without dependencies execute immediately and in parallel. Nodes with dependencies start once all incoming nodes complete. See [NODE_USAGE.md](NODE_USAGE.md) for complete Variables, Parser/Filter, For Each, Conditional, Shell, SSH, Docker, Webhook, Output File, JSON data-flow, templates, error-handling, and log-streaming instructions.
 
 ## Feature Roadmap
 
@@ -68,7 +68,7 @@ Nodes without dependencies execute immediately and in parallel. Nodes with depen
 | --- | --- |
 | Output parser / filter | Implemented |
 | For Each node | Implemented |
-| Conditional branching node | Planned |
+| Conditional branching node | Implemented |
 | Retry and timeout per node | Planned |
 | Scheduler / cron runs | Planned |
 | Run history detail page | Planned |
@@ -164,6 +164,7 @@ The full operator guide is in [NODE_USAGE.md](NODE_USAGE.md). Key runtime facts:
 - **Workflow inputs** define run-time values for the whole workflow. Configure defaults with **Inputs**, then use placeholders such as `{domain}` in any shell, SSH, Docker, webhook, or output node field that supports interpolation.
 - **Parser / Filter** cleans upstream stdout or JSON arrays. Use it to split lines, remove empty values, dedupe, apply include/exclude regex filters, and pass either text lines or a JSON array to downstream nodes.
 - **For Each** consumes upstream parser items, arrays, or stdout lines and runs one shell command per item with bounded concurrency. Use `{item}` in the command or read `FLOW_ITEM`.
+- **Conditional** gates downstream nodes based on a JSON path, text match, regex, numeric comparison, or item count. Use two Conditional nodes with inverse rules for true and false branches.
 - **Output file** stores connected node output or a temporary execution-workspace file as an authenticated downloadable artifact in MySQL. Shell nodes in one run may share relative files, for example `subfinder ... > file1.txt` followed by `cat file1.txt file2.txt > final_sub.txt`.
 - **Shell command** runs via the chosen shell (`/bin/sh -lc` by default) in the application execution environment. With Docker Compose, that means inside the `app` container.
 - **Included shell tools** in the Compose app image: ProjectDiscovery `httpx v1.9.0`, ProjectDiscovery `subfinder v2.14.0`, `gobuster v3.8.2`, and selected SecLists wordlists at `/opt/seclists` with `SECLISTS=/opt/seclists`. Use them only against assets you are authorized to assess.

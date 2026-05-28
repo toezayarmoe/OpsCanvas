@@ -14,7 +14,7 @@ import TemplateModal from "./components/TemplateModal";
 import AuthScreen from "./components/AuthScreen";
 import WorkflowInputsModal from "./components/WorkflowInputsModal";
 
-const nodeTypes = { variable: NodeCard, output: NodeCard, parser: NodeCard, foreach: NodeCard, command: NodeCard, ssh: NodeCard, docker: NodeCard, webhook: NodeCard };
+const nodeTypes = { variable: NodeCard, output: NodeCard, parser: NodeCard, foreach: NodeCard, conditional: NodeCard, command: NodeCard, ssh: NodeCard, docker: NodeCard, webhook: NodeCard };
 const InteractiveTerminal = lazy(() => import("./components/InteractiveTerminal"));
 const emptyWorkflow = () => ({ name: "Untitled workflow", description: "", inputs: {}, nodes: [], edges: [], templates: [] });
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));

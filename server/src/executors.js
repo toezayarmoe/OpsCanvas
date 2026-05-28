@@ -85,6 +85,94 @@ function executeParser(config, inputs, context) {
   return { items, stdout: items.join("\n"), count: items.length };
 }
 
+function getInputValue(inputs) {
+  return inputs.length === 1 ? inputs[0].output : inputs.map((input) => input.output);
+}
+
+function readPath(value, pathExpression) {
+  const pathValue = typeof pathExpression === "string" ? pathExpression.trim() : "";
+  if (!pathValue) return value;
+  return pathValue
+    .replace(/\[(\d+)\]/g, ".$1")
+    .split(".")
+    .filter(Boolean)
+    .reduce((current, key) => {
+      if (current == null) return undefined;
+      return current[key];
+    }, value);
+}
+
+function normalizeComparable(value, caseSensitive) {
+  const normalized = typeof value === "string" ? value : String(JSON.stringify(value) ?? value ?? "");
+  return caseSensitive === false ? normalized.toLowerCase() : normalized;
+}
+
+function valueCount(value) {
+  if (Array.isArray(value)) return value.length;
+  if (typeof value === "string") return value.split(/\r?\n/).filter(Boolean).length;
+  if (value && typeof value === "object") {
+    if (Array.isArray(value.items)) return value.items.length;
+    if (Array.isArray(value.results)) return value.results.length;
+    if (Array.isArray(value.lines)) return value.lines.length;
+    return Object.keys(value).length;
+  }
+  return value == null ? 0 : 1;
+}
+
+function compareCondition(operator, actual, expected, config) {
+  const caseSensitive = config.caseSensitive !== false;
+  switch (operator) {
+    case "exists":
+      return actual !== undefined && actual !== null;
+    case "notExists":
+      return actual === undefined || actual === null;
+    case "falsy":
+      return !actual;
+    case "equals":
+      return normalizeComparable(actual, caseSensitive) === normalizeComparable(expected, caseSensitive);
+    case "notEquals":
+      return normalizeComparable(actual, caseSensitive) !== normalizeComparable(expected, caseSensitive);
+    case "contains":
+      return normalizeComparable(actual, caseSensitive).includes(normalizeComparable(expected, caseSensitive));
+    case "regex": {
+      const flags = caseSensitive ? "" : "i";
+      return new RegExp(String(expected), flags).test(String(actual ?? ""));
+    }
+    case "greaterThan":
+      return Number(actual) > Number(expected);
+    case "lessThan":
+      return Number(actual) < Number(expected);
+    case "countGreaterThan":
+      return valueCount(actual) > Number(expected);
+    case "countEquals":
+      return valueCount(actual) === Number(expected);
+    case "truthy":
+    default:
+      return Boolean(actual);
+  }
+}
+
+function executeConditional(config, inputs, context) {
+  const source = getInputValue(inputs);
+  const actual = readPath(source, config.path);
+  let matched;
+  try {
+    matched = compareCondition(config.operator || "truthy", actual, config.value || "", config);
+  } catch (error) {
+    throw new Error(`Conditional check failed: ${error.message}`);
+  }
+  if (config.invert) matched = !matched;
+  context.log("stdout", `Conditional ${matched ? "matched" : "did not match"} (${config.path || "input"} ${config.operator || "truthy"}).\n`);
+  return {
+    condition: matched,
+    path: config.path || "",
+    operator: config.operator || "truthy",
+    actual,
+    input: source,
+    __cliflowStatus: matched ? "success" : "skipped",
+  };
+}
+
 function extractForEachItems(config, inputs) {
   const splitLines = config.splitLines !== false;
   const trim = config.trim !== false;
@@ -266,6 +354,9 @@ export async function executeNode(node, inputs, context) {
 
     case "foreach":
       return executeForEach(config, inputs, context, variables);
+
+    case "conditional":
+      return executeConditional(config, inputs, context);
 
     case "command":
       if (!config.command?.trim()) throw new Error("Shell command is required.");

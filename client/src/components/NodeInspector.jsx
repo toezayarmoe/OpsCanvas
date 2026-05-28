@@ -150,6 +150,43 @@ export default function NodeInspector({ width, node, onUpdate, onDelete, onClose
             <p className="text-xs leading-5 text-zinc-500">Consumes upstream parser items, arrays, or stdout lines. Use <span className="font-mono text-zinc-300">{"{item}"}</span> in the command, or read <span className="font-mono text-zinc-300">FLOW_ITEM</span> and <span className="font-mono text-zinc-300">FLOW_ITEM_INDEX</span>.</p>
           </>
         )}
+        {node.type === "conditional" && (
+          <>
+            <Field label="JSON path">
+              <input className={`${inputClass} font-mono text-xs`} value={config.path || ""} onChange={(event) => setConfig("path", event.target.value)} placeholder="stdout, count, items.0" />
+            </Field>
+            <Field label="Operator">
+              <select className={inputClass} value={config.operator || "truthy"} onChange={(event) => setConfig("operator", event.target.value)}>
+                <option value="truthy">Truthy</option>
+                <option value="falsy">Falsy</option>
+                <option value="exists">Exists</option>
+                <option value="notExists">Does not exist</option>
+                <option value="equals">Equals</option>
+                <option value="notEquals">Does not equal</option>
+                <option value="contains">Contains</option>
+                <option value="regex">Regex match</option>
+                <option value="greaterThan">Greater than</option>
+                <option value="lessThan">Less than</option>
+                <option value="countGreaterThan">Count greater than</option>
+                <option value="countEquals">Count equals</option>
+              </select>
+            </Field>
+            <Field label="Compare value">
+              <input className={inputClass} value={config.value || ""} onChange={(event) => setConfig("value", event.target.value)} placeholder="ready" />
+            </Field>
+            <div className="grid grid-cols-2 gap-2 text-xs text-zinc-400">
+              <label className="flex items-center gap-2 rounded-lg border border-zinc-800 p-3">
+                <input type="checkbox" checked={config.caseSensitive !== false} onChange={(event) => setConfig("caseSensitive", event.target.checked)} />
+                Case sensitive
+              </label>
+              <label className="flex items-center gap-2 rounded-lg border border-zinc-800 p-3">
+                <input type="checkbox" checked={Boolean(config.invert)} onChange={(event) => setConfig("invert", event.target.checked)} />
+                Invert result
+              </label>
+            </div>
+            <p className="text-xs leading-5 text-zinc-500">When true, connected child nodes continue. When false, this node is skipped, so downstream nodes are skipped unless they explicitly run after failure/skip.</p>
+          </>
+        )}
         {node.type === "command" && (
           <>
             <Field label="Shell"><input className={inputClass} value={config.shell} onChange={(event) => setConfig("shell", event.target.value)} /></Field>

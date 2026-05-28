@@ -192,9 +192,13 @@ async function runNode(execution, node, dependencies) {
       workspacePath: execution.workspacePath,
       variables,
     });
-    const result = { status: "success", startedAt, completedAt: new Date().toISOString(), output, variables: collectVariables([{ output, variables }]) };
+    const requestedStatus = output?.__cliflowStatus === "skipped" ? "skipped" : "success";
+    const publicOutput = output && typeof output === "object"
+      ? Object.fromEntries(Object.entries(output).filter(([key]) => key !== "__cliflowStatus"))
+      : output;
+    const result = { status: requestedStatus, startedAt, completedAt: new Date().toISOString(), output: publicOutput, variables: collectVariables([{ output: publicOutput, variables }]) };
     execution.results.set(node.id, result);
-    emit(execution, { type: "node.completed", nodeId: node.id, result });
+    emit(execution, { type: requestedStatus === "skipped" ? "node.skipped" : "node.completed", nodeId: node.id, result });
   } catch (error) {
     const result = { status: execution.cancelled ? "cancelled" : "failed", startedAt, completedAt: new Date().toISOString(), error: serializeError(error) };
     execution.results.set(node.id, result);

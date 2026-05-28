@@ -1,4 +1,4 @@
-import { Box, Braces, FileOutput, Filter, Globe, Repeat2, Server, TerminalSquare } from "lucide-react";
+import { Box, Braces, FileOutput, Filter, GitBranch, Globe, Repeat2, Server, TerminalSquare } from "lucide-react";
 
 export const NODE_CATALOG = {
   variable: {
@@ -36,6 +36,19 @@ export const NODE_CATALOG = {
       trim: true,
       removeEmpty: true,
       continueOnError: false,
+    },
+  },
+  conditional: {
+    label: "Conditional",
+    description: "Gate a branch by output",
+    accent: "amber",
+    icon: GitBranch,
+    config: {
+      path: "stdout",
+      operator: "contains",
+      value: "ready",
+      caseSensitive: true,
+      invert: false,
     },
   },
   command: {
