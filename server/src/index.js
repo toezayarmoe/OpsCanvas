@@ -13,6 +13,7 @@ import { cancelExecution, getExecution, startExecution, subscribeExecution } fro
 import { deleteArtifact, getArtifact, listArtifacts } from "./artifacts.js";
 import { createWorkflow, deleteWorkflow, getWorkflow, listWorkflows, updateWorkflow } from "./store.js";
 import { openTerminal } from "./terminal.js";
+import { startScheduler } from "./scheduler.js";
 
 const app = express();
 const clientDist = path.resolve(fileURLToPath(new URL("../../client/dist", import.meta.url)));
@@ -215,6 +216,7 @@ async function start() {
   server.listen(config.port, config.host, () => {
     console.log(`CLIFlow listening on http://${config.host}:${config.port}`);
   });
+  startScheduler();
 }
 
 start().catch((error) => {

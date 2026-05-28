@@ -240,6 +240,21 @@ export default function NodeInspector({ width, node, onUpdate, onDelete, onClose
           <input type="checkbox" checked={Boolean(config.runAfterFailure)} onChange={(event) => setConfig("runAfterFailure", event.target.checked)} />
           Run when a dependency fails
         </label>
+        <div className="rounded-xl border border-zinc-800 bg-[#090d14] p-3">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Reliability</p>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <Field label="Retries">
+              <input className={inputClass} type="number" min="0" max="10" value={config.retryCount || 0} onChange={(event) => setConfig("retryCount", Number(event.target.value))} />
+            </Field>
+            <Field label="Delay ms">
+              <input className={inputClass} type="number" min="0" max="600000" value={config.retryDelayMs || 0} onChange={(event) => setConfig("retryDelayMs", Number(event.target.value))} />
+            </Field>
+            <Field label="Timeout sec">
+              <input className={inputClass} type="number" min="0" max="86400" value={config.timeoutSeconds || 0} onChange={(event) => setConfig("timeoutSeconds", Number(event.target.value))} />
+            </Field>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-zinc-500">Retries rerun this node after failure. Timeout `0` means no limit; timeout kills running shell, SSH, Docker, webhook, or loop work for the attempt.</p>
+        </div>
         <button onClick={() => onDelete(node.id)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 py-2.5 text-sm text-rose-300 hover:bg-rose-500/20">
           <Trash2 size={15} /> Delete node
         </button>

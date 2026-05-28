@@ -61,6 +61,68 @@ Connections define dependencies, not just drawing order:
 - A failed dependency causes a downstream node to be skipped unless **Run when a dependency fails** is enabled for that node.
 - **Cancel** terminates running shell/SSH/Docker child processes and aborts active webhooks.
 
+### Retry And Timeout Per Node
+
+Every node inspector includes **Reliability** settings:
+
+| Field | Meaning |
+| --- | --- |
+| Retries | Number of extra attempts after the first failure. `0` means no retry. Maximum: `10`. |
+| Delay ms | Wait time between attempts in milliseconds. Maximum: `600000` ms. |
+| Timeout sec | Maximum runtime for each attempt. `0` means no timeout. Maximum: `86400` seconds. |
+
+Pseudocode:
+
+```text
+attempt = 1
+while attempt <= 1 + retries:
+  run node with timeout
+  if success:
+    continue workflow
+  if attempt still available:
+    wait delayMs
+    attempt += 1
+  else:
+    fail node
+```
+
+Timeout applies per attempt. When timeout is reached, CLIFlow cancels the running process or request for that attempt and then retries if retries remain.
+
+## Scheduler / Cron Runs
+
+Use **Schedule** in the workflow header to run a saved workflow automatically. The schedule is stored with the workflow in MySQL and is included when exporting a `.cliflow.json` workflow file.
+
+Scheduler fields:
+
+| Field | Meaning |
+| --- | --- |
+| Enable scheduled runs | Turns automatic runs on or off for this workflow. |
+| Cron expression | Five-field cron: `minute hour day month weekday`. |
+| Schedule inputs JSON | Input values used for scheduled runs. These override workflow input defaults for the scheduled execution. |
+
+Examples:
+
+| Cron | Meaning |
+| --- | --- |
+| `*/15 * * * *` | Every 15 minutes. |
+| `0 9 * * *` | Every day at 09:00 server local time. |
+| `0 9 * * 1-5` | Weekdays at 09:00 server local time. |
+| `0,30 * * * *` | Twice per hour at minute 0 and 30. |
+
+Scheduler pseudocode:
+
+```text
+every 30 seconds:
+  for each workflow where schedule.enabled == true:
+    if cron matches current server minute:
+      if previous scheduled run is still running:
+        skip this tick
+      else:
+        start workflow with schedule.inputs
+```
+
+Scheduled executions run under the workflow owner. Logs are streamed only while a client is connected to that execution, so important scheduled results should be saved with an Output file node or sent to an external system.
+
 ### Structured Output
 
 If a Shell, SSH, or Docker node writes valid JSON to standard output and exits successfully, the JSON becomes its output:

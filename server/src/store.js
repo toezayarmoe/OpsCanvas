@@ -19,6 +19,18 @@ function normalizeInputs(value) {
   return Object.fromEntries(entries);
 }
 
+function normalizeSchedule(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { enabled: false, cron: "", inputs: {} };
+  const enabled = Boolean(value.enabled);
+  const cron = typeof value.cron === "string" ? value.cron.trim().slice(0, 80) : "";
+  if (enabled && cron.split(/\s+/).length !== 5) throw new Error("Schedule cron must use five fields: minute hour day month weekday.");
+  return {
+    enabled,
+    cron,
+    inputs: normalizeInputs(value.inputs || {}),
+  };
+}
+
 function iso(value) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
@@ -39,6 +51,7 @@ function normalizeWorkflow(body, id = randomUUID()) {
     nodes,
     edges,
     inputs: normalizeInputs(body.inputs),
+    schedule: normalizeSchedule(body.schedule),
     templates: Array.isArray(body.templates) ? body.templates : [],
   };
 }
@@ -82,6 +95,15 @@ export async function listWorkflows(userId) {
     const { nodes, edges, templates, ...metadata } = workflow;
     return { ...metadata, nodeCount: nodes.length, edgeCount: edges.length };
   });
+}
+
+export async function listScheduledWorkflowRows() {
+  const [rows] = await pool.execute(
+    `SELECT id, user_id, name, description, definition, created_at, updated_at
+       FROM workflows
+      WHERE JSON_UNQUOTE(JSON_EXTRACT(definition, '$.schedule.enabled')) = 'true'`,
+  );
+  return rows.map((row) => ({ userId: row.user_id, workflow: fromRow(row) }));
 }
 
 export async function getWorkflow(userId, id) {

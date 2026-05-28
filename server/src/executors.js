@@ -259,6 +259,7 @@ async function executeForEach(config, inputs, context, variables) {
 
   async function worker() {
     while (nextIndex < items.length) {
+      if (context.isCancelled?.()) return;
       if (stopped) return;
       const index = nextIndex;
       nextIndex += 1;
@@ -279,6 +280,7 @@ async function executeForEach(config, inputs, context, variables) {
         }, context);
         results[index] = { item, index, status: "success", output };
       } catch (error) {
+        if (context.isCancelled?.()) return;
         const failure = {
           item,
           index,

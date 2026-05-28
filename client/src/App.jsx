@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, { Background, Controls, MiniMap, addEdge, useEdgesState, useNodesState, useReactFlow } from "reactflow";
 import "reactflow/dist/style.css";
-import { Braces, ChevronLeft, ChevronRight, Download, Files, LogOut, Play, Save, TerminalSquare, Trash2, Upload, Workflow } from "lucide-react";
+import { Braces, ChevronLeft, ChevronRight, Clock3, Download, Files, LogOut, Play, Save, TerminalSquare, Trash2, Upload, Workflow } from "lucide-react";
 import { api } from "./lib/api";
 import { createNode } from "./lib/catalog";
 import { exportWorkflowFile, importWorkflowFile } from "./lib/workflowFile";
@@ -13,10 +13,11 @@ import ArtifactsPanel from "./components/ArtifactsPanel";
 import TemplateModal from "./components/TemplateModal";
 import AuthScreen from "./components/AuthScreen";
 import WorkflowInputsModal from "./components/WorkflowInputsModal";
+import WorkflowScheduleModal from "./components/WorkflowScheduleModal";
 
 const nodeTypes = { variable: NodeCard, output: NodeCard, parser: NodeCard, foreach: NodeCard, conditional: NodeCard, command: NodeCard, ssh: NodeCard, docker: NodeCard, webhook: NodeCard };
 const InteractiveTerminal = lazy(() => import("./components/InteractiveTerminal"));
-const emptyWorkflow = () => ({ name: "Untitled workflow", description: "", inputs: {}, nodes: [], edges: [], templates: [] });
+const emptyWorkflow = () => ({ name: "Untitled workflow", description: "", inputs: {}, schedule: { enabled: false, cron: "", inputs: {} }, nodes: [], edges: [], templates: [] });
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const serializeNodes = (nodes) => nodes.map(({ id, type, position, data }) => ({
   id,
@@ -59,6 +60,7 @@ export default function App() {
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [templateModal, setTemplateModal] = useState(false);
   const [inputsModal, setInputsModal] = useState(null);
+  const [scheduleModal, setScheduleModal] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [notice, setNotice] = useState("");
   const [sessionLoading, setSessionLoading] = useState(true);
@@ -318,6 +320,7 @@ export default function App() {
     setArtifactsOpen(false);
     setTerminalOpen(false);
     setInputsModal(null);
+    setScheduleModal(false);
   };
 
   if (sessionLoading) return <div className="flex h-screen items-center justify-center bg-[#080b12] text-sm text-zinc-500">Loading CLIFlow...</div>;
@@ -380,6 +383,9 @@ export default function App() {
             )}
             <button onClick={() => setInputsModal("configure")} title="Configure workflow inputs" className="flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
               <Braces size={15} /> Inputs {Object.keys(workflow.inputs || {}).length ? `(${Object.keys(workflow.inputs || {}).length})` : ""}
+            </button>
+            <button onClick={() => setScheduleModal(true)} title="Configure scheduled runs" className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-zinc-800 ${workflow.schedule?.enabled ? "border-emerald-500/50 text-emerald-300" : "border-zinc-700 text-zinc-300"}`}>
+              <Clock3 size={15} /> Schedule
             </button>
             <button onClick={() => { setArtifactsOpen(true); refreshArtifacts(workflow.id).catch(handleRequestError); }} className="flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
               <Files size={15} /> Outputs {artifacts.length ? `(${artifacts.length})` : ""}
@@ -514,6 +520,18 @@ export default function App() {
               }
               setInputsModal(null);
               executeWorkflow(inputs);
+            }}
+          />
+        )}
+        {scheduleModal && (
+          <WorkflowScheduleModal
+            schedule={workflow.schedule}
+            workflowInputs={workflow.inputs || {}}
+            onClose={() => setScheduleModal(false)}
+            onSubmit={(schedule) => {
+              setWorkflow((current) => ({ ...current, schedule }));
+              setScheduleModal(false);
+              markChanged();
             }}
           />
         )}

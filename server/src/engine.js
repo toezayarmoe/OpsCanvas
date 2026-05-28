@@ -68,6 +68,21 @@ function collectVariables(results) {
   }, {});
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getExecutionControls(node) {
+  const config = node.data?.config || {};
+  return {
+    retryCount: Math.max(0, Math.min(10, Number(config.retryCount) || 0)),
+    retryDelayMs: Math.max(0, Math.min(600000, Number(config.retryDelayMs) || 0)),
+    timeoutMs: Number(config.timeoutSeconds) > 0
+      ? Math.max(1000, Math.min(24 * 60 * 60 * 1000, Number(config.timeoutSeconds) * 1000))
+      : 0,
+  };
+}
+
 export function subscribeExecution(id, userId, listener) {
   const execution = executions.get(id);
   if (!execution || execution.userId !== userId) return null;
@@ -175,34 +190,82 @@ async function runNode(execution, node, dependencies) {
   const startedAt = new Date().toISOString();
   execution.results.set(node.id, { status: "running", startedAt });
   emit(execution, { type: "node.started", nodeId: node.id });
-  try {
-    const dependencyResults = dependencies.map((nodeId) => execution.results.get(nodeId));
-    const variables = { ...execution.variables, ...collectVariables(dependencyResults) };
-    const inputs = dependencies.map((nodeId) => ({ nodeId, output: execution.results.get(nodeId).output }));
-    const output = await executeNode(node, inputs, {
-      log: (stream, content) => emit(execution, { type: "node.log", nodeId: node.id, stream, content }),
-      registerCancel: (handler) => execution.cancelHandlers.add(handler),
-      saveArtifact: (artifact) => saveArtifact({
-        ...artifact,
-        userId: execution.userId,
-        workflowId: execution.workflowId,
-        executionId: execution.id,
-        nodeId: node.id,
-      }),
-      workspacePath: execution.workspacePath,
-      variables,
-    });
-    const requestedStatus = output?.__cliflowStatus === "skipped" ? "skipped" : "success";
-    const publicOutput = output && typeof output === "object"
-      ? Object.fromEntries(Object.entries(output).filter(([key]) => key !== "__cliflowStatus"))
-      : output;
-    const result = { status: requestedStatus, startedAt, completedAt: new Date().toISOString(), output: publicOutput, variables: collectVariables([{ output: publicOutput, variables }]) };
-    execution.results.set(node.id, result);
-    emit(execution, { type: requestedStatus === "skipped" ? "node.skipped" : "node.completed", nodeId: node.id, result });
-  } catch (error) {
-    const result = { status: execution.cancelled ? "cancelled" : "failed", startedAt, completedAt: new Date().toISOString(), error: serializeError(error) };
-    execution.results.set(node.id, result);
-    emit(execution, { type: "node.log", nodeId: node.id, stream: "stderr", content: `${error.message}\n` });
-    emit(execution, { type: "node.failed", nodeId: node.id, result });
+  const controls = getExecutionControls(node);
+  const maxAttempts = controls.retryCount + 1;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const cancelHandlers = new Set();
+    let attemptCancelled = false;
+    const cleanupCancelHandlers = () => {
+      cancelHandlers.forEach((handler) => execution.cancelHandlers.delete(handler));
+      cancelHandlers.clear();
+    };
+
+    try {
+      if (attempt > 1) {
+        emit(execution, { type: "node.log", nodeId: node.id, stream: "stdout", content: `Retry attempt ${attempt}/${maxAttempts}.\n` });
+      }
+      const dependencyResults = dependencies.map((nodeId) => execution.results.get(nodeId));
+      const variables = { ...execution.variables, ...collectVariables(dependencyResults) };
+      const inputs = dependencies.map((nodeId) => ({ nodeId, output: execution.results.get(nodeId).output }));
+      const run = executeNode(node, inputs, {
+        log: (stream, content) => emit(execution, { type: "node.log", nodeId: node.id, stream, content }),
+        registerCancel: (handler) => {
+          cancelHandlers.add(handler);
+          execution.cancelHandlers.add(handler);
+        },
+        saveArtifact: (artifact) => saveArtifact({
+          ...artifact,
+          userId: execution.userId,
+          workflowId: execution.workflowId,
+          executionId: execution.id,
+          nodeId: node.id,
+        }),
+        workspacePath: execution.workspacePath,
+        variables,
+        isCancelled: () => execution.cancelled || attemptCancelled,
+      });
+
+      let timeoutId = null;
+      const output = controls.timeoutMs
+        ? await Promise.race([
+            run,
+            new Promise((_, reject) => {
+              timeoutId = setTimeout(() => {
+                attemptCancelled = true;
+                cancelHandlers.forEach((cancel) => cancel());
+                reject(new Error(`Node timed out after ${controls.timeoutMs / 1000} second(s).`));
+              }, controls.timeoutMs);
+            }),
+          ]).finally(() => {
+            if (timeoutId) clearTimeout(timeoutId);
+          })
+        : await run;
+
+      cleanupCancelHandlers();
+      const requestedStatus = output?.__cliflowStatus === "skipped" ? "skipped" : "success";
+      const publicOutput = output && typeof output === "object"
+        ? Object.fromEntries(Object.entries(output).filter(([key]) => key !== "__cliflowStatus"))
+        : output;
+      const result = { status: requestedStatus, startedAt, completedAt: new Date().toISOString(), output: publicOutput, variables: collectVariables([{ output: publicOutput, variables }]), attempts: attempt };
+      execution.results.set(node.id, result);
+      emit(execution, { type: requestedStatus === "skipped" ? "node.skipped" : "node.completed", nodeId: node.id, result });
+      return;
+    } catch (error) {
+      cleanupCancelHandlers();
+      lastError = error;
+      if (execution.cancelled) break;
+      if (attempt < maxAttempts) {
+        emit(execution, { type: "node.log", nodeId: node.id, stream: "stderr", content: `${error.message}\nRetrying in ${controls.retryDelayMs} ms.\n` });
+        if (controls.retryDelayMs) await sleep(controls.retryDelayMs);
+        continue;
+      }
+    }
   }
+
+  const result = { status: execution.cancelled ? "cancelled" : "failed", startedAt, completedAt: new Date().toISOString(), error: serializeError(lastError || new Error("Node failed.")), attempts: maxAttempts };
+  execution.results.set(node.id, result);
+  emit(execution, { type: "node.log", nodeId: node.id, stream: "stderr", content: `${result.error.message}\n` });
+  emit(execution, { type: "node.failed", nodeId: node.id, result });
 }

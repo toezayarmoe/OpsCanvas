@@ -22,6 +22,14 @@ function validateInputs(value) {
   return inputs;
 }
 
+function validateSchedule(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { enabled: false, cron: "", inputs: {} };
+  const enabled = Boolean(value.enabled);
+  const cron = typeof value.cron === "string" ? value.cron : "";
+  if (enabled && cron.trim().split(/\s+/).length !== 5) throw new Error("Workflow schedule cron must have five fields.");
+  return { enabled, cron, inputs: validateInputs(value.inputs || {}) };
+}
+
 function filenameFor(name) {
   const slug = String(name || "workflow")
     .toLowerCase()
@@ -40,6 +48,7 @@ export function exportWorkflowFile(workflow, nodes, edges) {
       name: workflow.name,
       description: workflow.description || "",
       inputs: workflow.inputs || {},
+      schedule: workflow.schedule || { enabled: false, cron: "", inputs: {} },
       nodes,
       edges,
       templates: workflow.templates || [],
@@ -97,11 +106,13 @@ export function importWorkflowFile(contents) {
     return template;
   }) : [];
   const inputs = validateInputs(source.inputs);
+  const schedule = validateSchedule(source.schedule);
 
   return {
     name: typeof source.name === "string" && source.name.trim() ? `${source.name.trim()} (imported)` : "Imported workflow",
     description: typeof source.description === "string" ? source.description : "",
     inputs,
+    schedule,
     nodes: validNodes,
     edges: validEdges,
     templates,
