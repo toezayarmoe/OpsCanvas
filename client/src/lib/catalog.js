@@ -1,4 +1,4 @@
-import { Box, Braces, Globe, Server, TerminalSquare } from "lucide-react";
+import { Box, Braces, FileOutput, Filter, Globe, Server, TerminalSquare } from "lucide-react";
 
 export const NODE_CATALOG = {
   variable: {
@@ -7,6 +7,20 @@ export const NODE_CATALOG = {
     accent: "cyan",
     icon: Braces,
     config: { variables: { url: "google.com" } },
+  },
+  output: {
+    label: "Output file",
+    description: "Save a downloadable artifact",
+    accent: "cyan",
+    icon: FileOutput,
+    config: { filename: "output.json", contentType: "application/json", sourceMode: "input", sourcePath: "", content: "{{input}}" },
+  },
+  parser: {
+    label: "Parser / Filter",
+    description: "Clean text or JSON lists",
+    accent: "teal",
+    icon: Filter,
+    config: { splitLines: true, trim: true, removeEmpty: true, dedupe: true, includeRegex: "", excludeRegex: "", limit: 0, outputMode: "lines" },
   },
   command: {
     label: "Shell command",

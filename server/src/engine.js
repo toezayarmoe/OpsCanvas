@@ -1,9 +1,25 @@
 import { randomUUID } from "node:crypto";
+import { mkdtempSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { saveArtifact } from "./artifacts.js";
 import { executeNode } from "./executors.js";
 
 const executions = new Map();
 const EVENT_LIMIT = 2000;
 const MAX_RUNNING_PER_USER = 5;
+
+function normalizeRuntimeInputs(value) {
+  if (value == null) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Run inputs must be a JSON object.");
+  const entries = Object.entries(value);
+  const invalidKey = entries.find(([key]) => !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key))?.[0];
+  if (invalidKey) throw new Error(`Invalid run input name: ${invalidKey}.`);
+  const invalidValue = entries.find(([, inputValue]) => inputValue != null && !["string", "number", "boolean"].includes(typeof inputValue));
+  if (invalidValue) throw new Error(`Run input "${invalidValue[0]}" must be a string, number, boolean, or null.`);
+  return Object.fromEntries(entries);
+}
 
 function serializeError(error) {
   return { message: error.message, details: error.details || null };
@@ -40,6 +56,18 @@ function emit(execution, event) {
   execution.listeners.forEach((listener) => listener(message));
 }
 
+function collectVariables(results) {
+  return results.reduce((variables, result) => {
+    const inherited = result.variables && typeof result.variables === "object" && !Array.isArray(result.variables)
+      ? result.variables
+      : {};
+    const outputVariables = result.output?.variables && typeof result.output.variables === "object" && !Array.isArray(result.output.variables)
+      ? result.output.variables
+      : {};
+    return { ...variables, ...inherited, ...outputVariables };
+  }, {});
+}
+
 export function subscribeExecution(id, userId, listener) {
   const execution = executions.get(id);
   if (!execution || execution.userId !== userId) return null;
@@ -69,10 +97,11 @@ export function cancelExecution(id, userId) {
   return true;
 }
 
-export function startExecution(workflow, userId) {
+export function startExecution(workflow, userId, runInputs = {}) {
   const active = [...executions.values()].filter((execution) => execution.userId === userId && execution.status === "running");
   if (active.length >= MAX_RUNNING_PER_USER) throw new Error(`At most ${MAX_RUNNING_PER_USER} workflows may run concurrently.`);
   const graph = createGraph(workflow);
+  const variables = normalizeRuntimeInputs({ ...(workflow.inputs || {}), ...runInputs });
   const execution = {
     id: randomUUID(),
     userId,
@@ -85,6 +114,8 @@ export function startExecution(workflow, userId) {
     listeners: new Set(),
     cancelHandlers: new Set(),
     cancelled: false,
+    variables,
+    workspacePath: mkdtempSync(path.join(tmpdir(), "cliflow-run-")),
   };
   executions.set(execution.id, execution);
   emit(execution, { type: "execution.started", workflowId: workflow.id });
@@ -137,6 +168,7 @@ async function runGraph(execution, graph) {
       : "success";
   execution.completedAt = new Date().toISOString();
   emit(execution, { type: "execution.completed", status: execution.status, results: Object.fromEntries(execution.results) });
+  await rm(execution.workspacePath, { recursive: true, force: true }).catch(() => {});
 }
 
 async function runNode(execution, node, dependencies) {
@@ -144,12 +176,23 @@ async function runNode(execution, node, dependencies) {
   execution.results.set(node.id, { status: "running", startedAt });
   emit(execution, { type: "node.started", nodeId: node.id });
   try {
+    const dependencyResults = dependencies.map((nodeId) => execution.results.get(nodeId));
+    const variables = { ...execution.variables, ...collectVariables(dependencyResults) };
     const inputs = dependencies.map((nodeId) => ({ nodeId, output: execution.results.get(nodeId).output }));
     const output = await executeNode(node, inputs, {
       log: (stream, content) => emit(execution, { type: "node.log", nodeId: node.id, stream, content }),
       registerCancel: (handler) => execution.cancelHandlers.add(handler),
+      saveArtifact: (artifact) => saveArtifact({
+        ...artifact,
+        userId: execution.userId,
+        workflowId: execution.workflowId,
+        executionId: execution.id,
+        nodeId: node.id,
+      }),
+      workspacePath: execution.workspacePath,
+      variables,
     });
-    const result = { status: "success", startedAt, completedAt: new Date().toISOString(), output };
+    const result = { status: "success", startedAt, completedAt: new Date().toISOString(), output, variables: collectVariables([{ output, variables }]) };
     execution.results.set(node.id, result);
     emit(execution, { type: "node.completed", nodeId: node.id, result });
   } catch (error) {

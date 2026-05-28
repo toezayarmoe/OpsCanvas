@@ -10,7 +10,9 @@ import { authenticationSucceeded, checkAuthRateLimit, createUser, establishSessi
 import { assertProductionConfig, config } from "./config.js";
 import { initializeDatabase } from "./db.js";
 import { cancelExecution, getExecution, startExecution, subscribeExecution } from "./engine.js";
+import { deleteArtifact, getArtifact, listArtifacts } from "./artifacts.js";
 import { createWorkflow, deleteWorkflow, getWorkflow, listWorkflows, updateWorkflow } from "./store.js";
+import { openTerminal } from "./terminal.js";
 
 const app = express();
 const clientDist = path.resolve(fileURLToPath(new URL("../../client/dist", import.meta.url)));
@@ -33,7 +35,7 @@ app.use(cors({ origin: config.clientOrigin, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
-app.get("/api/auth/config", (_req, res) => res.json({ registrationEnabled: config.registrationEnabled }));
+app.get("/api/auth/config", (_req, res) => res.json({ registrationEnabled: config.registrationEnabled, terminalEnabled: config.terminalEnabled }));
 app.get("/api/auth/me", requireAuth, (req, res) => res.json({ user: req.user }));
 app.post("/api/auth/register", requireTrustedOrigin, checkAuthRateLimit, async (req, res, next) => {
   if (!config.registrationEnabled) return res.status(403).json({ error: "Account registration is disabled." });
@@ -96,7 +98,7 @@ app.post("/api/workflows/:id/run", async (req, res, next) => {
   try {
     const workflow = await getWorkflow(req.user.id, req.params.id);
     if (!workflow) return res.status(404).json({ error: "Workflow not found." });
-    res.status(202).json(startExecution(workflow, req.user.id));
+    res.status(202).json(startExecution(workflow, req.user.id, req.body?.inputs || {}));
   } catch (error) { next(error); }
 });
 
@@ -111,6 +113,26 @@ app.post("/api/executions/:id/cancel", (req, res) => {
   res.status(202).json({ status: "cancelling" });
 });
 
+app.use("/api/artifacts", requireTrustedOrigin, requireAuth);
+app.get("/api/artifacts", async (req, res, next) => {
+  try { res.json(await listArtifacts(req.user.id, req.query.workflowId)); } catch (error) { next(error); }
+});
+app.get("/api/artifacts/:id/download", async (req, res, next) => {
+  try {
+    const artifact = await getArtifact(req.user.id, req.params.id);
+    if (!artifact) return res.status(404).json({ error: "Output file not found." });
+    res.setHeader("content-type", artifact.contentType);
+    res.setHeader("content-disposition", `attachment; filename="${artifact.filename.replaceAll('"', "")}"`);
+    res.send(artifact.content);
+  } catch (error) { next(error); }
+});
+app.delete("/api/artifacts/:id", async (req, res, next) => {
+  try {
+    if (!(await deleteArtifact(req.user.id, req.params.id))) return res.status(404).json({ error: "Output file not found." });
+    res.status(204).end();
+  } catch (error) { next(error); }
+});
+
 if (existsSync(clientDist)) {
   app.use(express.static(clientDist));
   app.get("*", (_req, res) => res.sendFile(path.join(clientDist, "index.html")));
@@ -121,7 +143,7 @@ app.use((error, _req, res, _next) => {
 });
 
 const server = http.createServer(app);
-const socketServer = new WebSocketServer({ server, path: "/ws" });
+const socketServer = new WebSocketServer({ noServer: true });
 socketServer.on("connection", async (socket, request) => {
   try {
     if (request.headers.origin !== config.clientOrigin) {
@@ -145,6 +167,46 @@ socketServer.on("connection", async (socket, request) => {
   } catch {
     socket.close(1011, "Unable to authenticate connection.");
   }
+});
+
+const terminalServer = new WebSocketServer({ noServer: true });
+terminalServer.on("connection", async (socket, request) => {
+  try {
+    if (!config.terminalEnabled) {
+      socket.close(1008, "Interactive terminal is disabled.");
+      return;
+    }
+    if (request.headers.origin !== config.clientOrigin) {
+      socket.close(1008, "Connection origin is not allowed.");
+      return;
+    }
+    const user = await findRequestUser(request);
+    if (!user) {
+      socket.close(1008, "Authentication required.");
+      return;
+    }
+    openTerminal(socket, user);
+  } catch {
+    socket.close(1011, "Unable to open terminal.");
+  }
+});
+
+server.on("upgrade", (request, socket, head) => {
+  const pathname = new URL(request.url, `http://${request.headers.host || "localhost"}`).pathname;
+  const webSocketServer = pathname === "/ws"
+    ? socketServer
+    : pathname === "/terminal"
+      ? terminalServer
+      : null;
+
+  if (!webSocketServer) {
+    socket.destroy();
+    return;
+  }
+
+  webSocketServer.handleUpgrade(request, socket, head, (webSocket) => {
+    webSocketServer.emit("connection", webSocket, request);
+  });
 });
 
 async function start() {

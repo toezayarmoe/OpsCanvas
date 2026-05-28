@@ -1,13 +1,18 @@
-import { Clock3, Layers3, Plus, Workflow } from "lucide-react";
+import { ChevronLeft, Clock3, Layers3, Plus, Workflow } from "lucide-react";
 import { NODE_CATALOG } from "../lib/catalog";
 
-export default function Sidebar({ workflows, activeId, templates, onLoad, onNew, onOpenTemplate, onDragStart }) {
+export default function Sidebar({ width, workflows, activeId, templates, onLoad, onNew, onOpenTemplate, onCollapse, onDragStart }) {
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-r border-zinc-800/80 bg-[#090c13]">
+    <aside style={{ width }} className="flex shrink-0 flex-col border-r border-zinc-800/80 bg-[#090c13]">
       <div className="border-b border-zinc-800/80 p-5">
-        <div className="flex items-center gap-2 text-lg font-bold tracking-tight">
-          <div className="rounded-lg bg-emerald-400 p-1.5 text-zinc-950"><Workflow size={18} /></div>
-          CLIFlow
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-lg font-bold tracking-tight">
+            <div className="rounded-lg bg-emerald-400 p-1.5 text-zinc-950"><Workflow size={18} /></div>
+            CLIFlow
+          </div>
+          <button onClick={onCollapse} title="Hide node library" className="rounded-lg border border-zinc-800 p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-white">
+            <ChevronLeft size={15} />
+          </button>
         </div>
         <p className="mt-2 text-xs text-zinc-500">Visual automation studio</p>
       </div>

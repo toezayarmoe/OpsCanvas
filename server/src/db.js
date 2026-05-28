@@ -45,5 +45,22 @@ export async function initializeDatabase() {
       INDEX idx_workflows_updated (user_id, updated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS artifacts (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      user_id CHAR(36) NOT NULL,
+      workflow_id VARCHAR(64) NOT NULL,
+      execution_id CHAR(36) NOT NULL,
+      node_id VARCHAR(128) NOT NULL,
+      filename VARCHAR(180) NOT NULL,
+      content_type VARCHAR(120) NOT NULL,
+      size_bytes INT UNSIGNED NOT NULL,
+      content MEDIUMBLOB NOT NULL,
+      created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      CONSTRAINT fk_artifacts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_artifacts_user_created (user_id, created_at),
+      INDEX idx_artifacts_workflow_created (user_id, workflow_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
   await pool.execute("DELETE FROM sessions WHERE expires_at < NOW(3)");
 }

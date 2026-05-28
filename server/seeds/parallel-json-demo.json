@@ -1,7 +1,7 @@
 {
   "id": "parallel-json-demo",
   "name": "Parallel JSON report",
-  "description": "Parallel shell checks followed by a JSON aggregation step.",
+  "description": "Parallel shell checks followed by a downloadable JSON report.",
   "createdAt": "2026-05-27T00:00:00.000Z",
   "updatedAt": "2026-05-27T00:00:00.000Z",
   "templates": [],
@@ -50,6 +50,23 @@
           "env": {}
         }
       }
+    },
+    {
+      "id": "report-output",
+      "type": "output",
+      "position": { "x": 265, "y": 575 },
+      "data": {
+        "label": "Download report",
+        "description": "Save a downloadable artifact",
+        "status": "idle",
+        "config": {
+          "filename": "report.json",
+          "contentType": "application/json",
+          "sourceMode": "input",
+          "sourcePath": "",
+          "content": "{{input}}"
+        }
+      }
     }
   ],
   "edges": [
@@ -64,6 +81,13 @@
       "id": "node-to-aggregate",
       "source": "node-version",
       "target": "aggregate",
+      "animated": true,
+      "style": { "stroke": "#34d399" }
+    },
+    {
+      "id": "aggregate-to-report",
+      "source": "aggregate",
+      "target": "report-output",
       "animated": true,
       "style": { "stroke": "#34d399" }
     }

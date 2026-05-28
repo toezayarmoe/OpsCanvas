@@ -4,8 +4,9 @@ CLIFlow is a visual automation studio for composing and executing dependency-bas
 
 ## Features
 
-- Dark workflow editor with drag-and-drop nodes, typed inspector, custom templates, minimap, and live terminal output.
-- Variables, shell, SSH, Docker container, and webhook nodes.
+- Dark workflow editor with drag-and-drop nodes, typed inspector, custom templates, minimap, workflow logs, and an optional interactive terminal.
+- Variables, parser/filter, shell, SSH, Docker container, webhook, and downloadable output-file nodes.
+- App-container Shell workflows include pinned `httpx`, `subfinder`, `gobuster`, and selected SecLists wordlists for authorized reconnaissance tasks.
 - Parallel DAG scheduler with cycle validation, failure propagation, cancellation, and JSON data chaining.
 - MySQL persistence for users, sessions, and per-user workflows.
 - Password-hashed accounts with opaque database-backed `HttpOnly` session cookies.
@@ -20,8 +21,9 @@ server/
   src/auth.js               Password accounts and session middleware
   src/db.js                 MySQL initialization and connection pool
   src/store.js              User-scoped workflow persistence
+  src/artifacts.js          User-scoped downloadable output-file persistence
   src/engine.js             Parallel DAG scheduler and event stream
-  src/executors.js          Shell, SSH, Docker and webhook runtimes
+  src/executors.js          Parser, Shell, SSH, Docker and webhook runtimes
   seeds/                    Example workflow copied per account on first listing
 compose.yaml                Application and MySQL service definitions
 Dockerfile                  Multi-stage application container image
@@ -46,6 +48,7 @@ docker compose up -d
 ```
 
 Open `http://localhost:4000`, register an account, and load **Parallel JSON report**. The `app` container creates the MySQL tables automatically and starts only after MySQL is healthy.
+The development `.env.example` enables the authenticated interactive terminal. It runs a shell inside the `app` container, not on the Docker host.
 
 ## Using The Workflow Builder
 
@@ -54,8 +57,10 @@ Open `http://localhost:4000`, register an account, and load **Parallel JSON repo
 3. Select each node and configure it in the inspector on the right.
 4. Choose **Save changes** to persist the workflow to MySQL.
 5. Choose **Run workflow** and watch live output in the execution console.
+6. Use **Export** to download the current canvas as a `.cliflow.json` file, or **Import** to create a new workflow from a previously exported file.
+7. Use **Inputs** to define workflow-level values such as `{domain}` or `{wordlist}`. These values are available to every node when the workflow runs.
 
-Nodes without dependencies execute immediately and in parallel. Nodes with dependencies start once all incoming nodes complete. See [NODE_USAGE.md](NODE_USAGE.md) for complete Variables, Shell, SSH, Docker, Webhook, JSON data-flow, templates, error-handling, and log-streaming instructions.
+Nodes without dependencies execute immediately and in parallel. Nodes with dependencies start once all incoming nodes complete. See [NODE_USAGE.md](NODE_USAGE.md) for complete Variables, Parser/Filter, Shell, SSH, Docker, Webhook, Output File, JSON data-flow, templates, error-handling, and log-streaming instructions.
 
 Useful commands:
 
@@ -105,6 +110,7 @@ MYSQL_ROOT_PASSWORD=replace-with-another-long-random-password
 SESSION_DAYS=7
 COOKIE_SECURE=true
 ALLOW_REGISTRATION=false
+ENABLE_TERMINAL=false
 ```
 
 Then run:
@@ -115,6 +121,8 @@ docker compose run --rm -e ADMIN_EMAIL=admin@example.com -e ADMIN_PASSWORD='use-
 ```
 
 Terminate TLS at a reverse proxy and forward HTTPS traffic and WebSocket upgrades to `127.0.0.1:4000`. Do not publish the Node service without TLS or publish MySQL directly to the internet.
+
+`ENABLE_TERMINAL` defaults to `false` in Compose. Turning it on grants each authenticated operator an interactive shell inside the application runtime. Enable it on a public deployment only for fully trusted accounts on a constrained worker/container environment.
 
 ## API
 
@@ -132,19 +140,25 @@ Authenticated routes:
 - `GET/POST /api/workflows`, `GET/PUT/DELETE /api/workflows/:id`
 - `POST /api/workflows/:id/run`
 - `GET /api/executions/:id`, `POST /api/executions/:id/cancel`
+- `GET /api/artifacts?workflowId=<id>`, `GET /api/artifacts/:id/download`, `DELETE /api/artifacts/:id`
 - `ws(s)://<host>/ws?executionId=<id>` for owner-authorized terminal events
+- `ws(s)://<host>/terminal` for an authenticated interactive shell when explicitly enabled
 
 ## Node Usage
 
 The full operator guide is in [NODE_USAGE.md](NODE_USAGE.md). Key runtime facts:
 
 - **Variables** defines named values for directly connected task nodes. For example, define `{ "url": "google.com" }`, connect it to a Shell node, and run `curl https://{url}`.
+- **Workflow inputs** define run-time values for the whole workflow. Configure defaults with **Inputs**, then use placeholders such as `{domain}` in any shell, SSH, Docker, webhook, or output node field that supports interpolation.
+- **Parser / Filter** cleans upstream stdout or JSON arrays. Use it to split lines, remove empty values, dedupe, apply include/exclude regex filters, and pass either text lines or a JSON array to downstream nodes.
+- **Output file** stores connected node output or a temporary execution-workspace file as an authenticated downloadable artifact in MySQL. Shell nodes in one run may share relative files, for example `subfinder ... > file1.txt` followed by `cat file1.txt file2.txt > final_sub.txt`.
 - **Shell command** runs via the chosen shell (`/bin/sh -lc` by default) in the application execution environment. With Docker Compose, that means inside the `app` container.
+- **Included shell tools** in the Compose app image: ProjectDiscovery `httpx v1.9.0`, ProjectDiscovery `subfinder v2.14.0`, `gobuster v3.8.2`, and selected SecLists wordlists at `/opt/seclists` with `SECLISTS=/opt/seclists`. Use them only against assets you are authorized to assess.
 - **SSH command** invokes `ssh` from the application execution environment. SSH keys and host verification files must exist inside that environment.
 - **Docker container** invokes `docker run --rm`. The supplied public-server Compose setup intentionally has no Docker socket or Docker CLI access, so Docker nodes require a separately isolated Docker-capable execution environment.
 - **Webhook** issues HTTP requests using server-side `fetch`; restrict allowed destinations before allowing untrusted operators.
 
-When a node prints valid JSON, it becomes structured downstream output. Otherwise the engine creates `{ "stdout": "...", "stderr": "..." }`. Downstream shell, SSH, and Docker tasks receive dependency results through `FLOW_INPUT_JSON`; shell commands, SSH commands, Docker commands, webhook URLs, and webhook request bodies may use `{{input}}` and named `{variable}` placeholders from connected Variables nodes.
+When a node prints valid JSON, it becomes structured downstream output. Otherwise the engine creates `{ "stdout": "...", "stderr": "..." }`. Downstream shell, SSH, and Docker tasks receive dependency results through `FLOW_INPUT_JSON`; shell commands, SSH commands, Docker commands, webhook URLs, and webhook request bodies may use `{{input}}` and named `{variable}` placeholders from connected Variables nodes. Relative files written by Shell nodes are kept in a private temporary directory for that run and deleted when execution finishes unless an Output file node publishes them.
 
 ## Security Boundary
 
@@ -156,4 +170,5 @@ For an internet-facing deployment:
 - Run CLIFlow as an unprivileged OS user on a dedicated host or tightly constrained container/worker environment.
 - Do not mount the host Docker socket into `app`; it grants authenticated command workflows effective host control. Implement Docker execution through a separately isolated worker if needed.
 - Restrict network egress and secrets available to the worker.
+- Keep `ENABLE_TERMINAL=false` unless trusted operators explicitly require direct shell access in the constrained runtime.
 - Add centralized audit logging, secret management, backups, monitoring, and a reverse-proxy rate limit before operational use.

@@ -47,3 +47,22 @@ select {
   border: 1px solid #27272a;
   border-radius: 12px;
 }
+
+/* `output` is a built-in React Flow node type; remove its stock white card around our custom node. */
+.react-flow__node-output {
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: initial;
+  font-size: inherit;
+}
+
+.react-flow__node-output.selectable:hover,
+.react-flow__node-output.selectable.selected,
+.react-flow__node-output.selectable:focus,
+.react-flow__node-output.selectable:focus-visible {
+  box-shadow: none;
+}

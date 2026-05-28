@@ -8,6 +8,17 @@ const seedsDir = path.resolve(fileURLToPath(new URL("../seeds", import.meta.url)
 const MAX_NODES = 250;
 const MAX_EDGES = 1000;
 
+function normalizeInputs(value) {
+  if (value == null) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Workflow inputs must be a JSON object.");
+  const entries = Object.entries(value);
+  const invalidKey = entries.find(([key]) => !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key))?.[0];
+  if (invalidKey) throw new Error(`Invalid workflow input name: ${invalidKey}.`);
+  const invalidValue = entries.find(([, inputValue]) => inputValue != null && !["string", "number", "boolean"].includes(typeof inputValue));
+  if (invalidValue) throw new Error(`Workflow input "${invalidValue[0]}" must be a string, number, boolean, or null.`);
+  return Object.fromEntries(entries);
+}
+
 function iso(value) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
@@ -27,6 +38,7 @@ function normalizeWorkflow(body, id = randomUUID()) {
     description: typeof body.description === "string" ? body.description.slice(0, 1000) : "",
     nodes,
     edges,
+    inputs: normalizeInputs(body.inputs),
     templates: Array.isArray(body.templates) ? body.templates : [],
   };
 }

@@ -1,9 +1,16 @@
-import { ChevronDown, Square, TerminalSquare, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Square, TerminalSquare, Trash2 } from "lucide-react";
 
-export default function ExecutionConsole({ events, execution, selectedNodeId, onClear, onCancel }) {
+export default function ExecutionConsole({ height, events, execution, selectedNodeId, onClear, onCancel, collapsed, onToggleCollapsed, onResizeStart }) {
   const logs = events.filter((event) => event.type === "node.log" && (!selectedNodeId || event.nodeId === selectedNodeId));
   return (
-    <section className="h-56 shrink-0 border-t border-zinc-800/80 bg-[#090c13]">
+    <section style={{ height: collapsed ? 48 : height }} className="relative shrink-0 border-t border-zinc-800/80 bg-[#090c13] transition-[height]">
+      {!collapsed && (
+        <div
+          onMouseDown={onResizeStart}
+          title="Resize live terminal"
+          className="absolute -top-1 left-0 right-0 z-10 h-2 cursor-row-resize hover:bg-emerald-500/30"
+        />
+      )}
       <header className="flex h-12 items-center justify-between border-b border-zinc-800/80 px-5">
         <div className="flex items-center gap-3">
           <TerminalSquare size={15} className="text-emerald-400" />
@@ -18,10 +25,16 @@ export default function ExecutionConsole({ events, execution, selectedNodeId, on
             <button onClick={onCancel} className="flex items-center gap-1.5 rounded-lg bg-rose-500/10 px-3 py-1.5 text-xs text-rose-300"><Square size={11} /> Stop</button>
           )}
           <button onClick={onClear} className="rounded-md p-1.5 text-zinc-500 hover:text-zinc-200"><Trash2 size={14} /></button>
-          <ChevronDown size={14} className="text-zinc-600" />
+          <button
+            onClick={onToggleCollapsed}
+            title={collapsed ? "Expand live terminal" : "Minimize live terminal"}
+            className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+          >
+            {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
         </div>
       </header>
-      <div className="h-[calc(100%-3rem)] overflow-y-auto p-4 font-mono text-xs leading-6">
+      {!collapsed && <div className="h-[calc(100%-3rem)] overflow-y-auto p-4 font-mono text-xs leading-6">
         {logs.length === 0 ? (
           <p className="text-zinc-600">$ Logs will stream here while a workflow runs.</p>
         ) : logs.map((log, index) => (
@@ -30,7 +43,7 @@ export default function ExecutionConsole({ events, execution, selectedNodeId, on
             <span className="whitespace-pre-wrap">{log.content}</span>
           </div>
         ))}
-      </div>
+      </div>}
     </section>
   );
 }

@@ -1,6 +1,6 @@
 # CLIFlow Node Usage Guide
 
-This guide explains how to build, connect, configure, and execute workflows in CLIFlow. It documents the behavior implemented by the current Variables, Shell command, SSH command, Docker container, and Webhook nodes.
+This guide explains how to build, connect, configure, and execute workflows in CLIFlow. It documents the behavior implemented by the current Variables, Parser / Filter, Output file, Shell command, SSH command, Docker container, and Webhook nodes.
 
 ## Start And Sign In
 
@@ -20,6 +20,34 @@ Open `http://localhost:4000`. In a local development deployment with registratio
 4. Select a node to open its inspector and set its label and execution configuration.
 5. Use **Save changes** to persist the workflow.
 6. Use **Run workflow** to start an execution and view live node logs in the bottom console.
+
+## Import And Export Workflows
+
+Use **Export** in the header to download the current canvas as a `.cliflow.json` file. The export includes node configuration, positions, edges, and custom templates; it does not include previous executions or downloadable output artifacts.
+
+Use **Import** to select a previously exported JSON file. Import validates supported node types and connections, then creates a new workflow named with an `(imported)` suffix so it does not overwrite an existing canvas.
+
+## Workflow Inputs
+
+Use **Inputs** in the header to define JSON values for the whole workflow:
+
+```json
+{
+  "domain": "example.com",
+  "wordlist": "/opt/seclists/Discovery/Web-Content/common.txt",
+  "threads": 25
+}
+```
+
+When the workflow runs, CLIFlow shows the same JSON so you can adjust values for that execution. Inputs are available to every node as placeholders:
+
+```sh
+subfinder -d {domain} -silent > subdomains.txt
+httpx -l subdomains.txt -silent > live-hosts.txt
+gobuster dir -u https://{domain} -w {wordlist} -t {threads}
+```
+
+Input names must start with a letter or underscore and may contain letters, numbers, and underscores. Values may be strings, numbers, booleans, or `null`.
 
 Use `Delete` or `Backspace` on a selected node, or the inspector's **Delete node** button, to remove a node and its connections.
 
@@ -144,6 +172,199 @@ Variables node output is also visible as structured input:
 }
 ```
 
+## Output File Node
+
+Use an Output file node to turn connected task output into a durable file that can be downloaded from the workflow UI. Files are stored as user-owned MySQL artifacts; the node does not write arbitrary files onto the application server filesystem.
+
+### Inspector Fields
+
+| Field | Meaning |
+| --- | --- |
+| Filename | Download filename, such as `google.html` or `result.json`. Path separators are not allowed. |
+| Content type | MIME type sent on download, such as `text/html` or `application/json`. |
+| Source | Choose connected node output or a relative file from this execution's temporary workspace. |
+| File content | For connected output, the content template. The default `{{input}}` saves incoming output. |
+| Workspace file path | For workspace files, a relative path such as `final_sub.txt`. |
+| Run when a dependency fails | Allows the node to run after upstream failure or skip. |
+
+Output files have a maximum size of 5 MB. They are scoped to the authenticated owner of the workflow.
+
+### Example: Combine Files From Multiple Commands
+
+Shell command nodes in the same workflow execution share a temporary working directory. This supports redirects and later processing steps.
+
+Create this graph, making sure both producer nodes connect to the merge node:
+
+```text
+Variables -> Subfinder first  --\
+Variables -> Subfinder second ----> Merge files -> Output file
+```
+
+Configure **Variables**:
+
+```json
+{
+  "domain1": "test.com",
+  "domain2": "example.com"
+}
+```
+
+Configure the first two **Shell command** nodes:
+
+```sh
+subfinder -d {domain1} --silent > file1.txt
+```
+
+```sh
+subfinder -d {domain2} --silent > file2.txt
+```
+
+Configure **Merge files**:
+
+```sh
+cat file1.txt file2.txt | sort -u > final_sub.txt
+```
+
+Configure **Output file**:
+
+```text
+Filename: final_sub.txt
+Content type: text/plain
+Source: Workspace file path
+Workspace file path: final_sub.txt
+```
+
+Run the workflow and open **Outputs** to download `final_sub.txt`.
+
+The graph connections matter: the merge command must depend on both producer nodes so it cannot run before both files have been written; the Output file node must depend on the merge command so it reads the completed final file.
+
+`subfinder` must be installed in the execution environment. With Docker Compose, Shell nodes execute inside the `app` container; build a controlled worker/runtime that includes the CLI tools required by your workflows.
+
+## Parser / Filter Node
+
+Use a Parser / Filter node between producer and consumer nodes when command output needs cleanup before the next step. It can consume upstream stdout, raw strings, JSON arrays, or JSON objects with `items`, `lines`, or `results` arrays.
+
+### Inspector Fields
+
+| Field | Meaning |
+| --- | --- |
+| Split lines | Splits text on newlines. Keep enabled for command output such as `subfinder` or `httpx`. |
+| Trim values | Removes leading and trailing whitespace from each item. |
+| Remove empty | Drops blank items. |
+| Dedupe | Keeps only the first copy of each item. |
+| Include regex | Optional JavaScript regular expression; only matching items are kept. |
+| Exclude regex | Optional JavaScript regular expression; matching items are removed. |
+| Limit | Optional maximum number of items; `0` means no limit. |
+| Output mode | `Text lines` returns `{ "items": [...], "stdout": "...", "count": n }`; `JSON array` returns `{ "items": [...], "count": n }`. |
+
+### Example: Clean Subdomains Before HTTP Probing
+
+Create this graph:
+
+```text
+Shell command -> Parser / Filter -> Shell command -> Output file
+```
+
+First **Shell command**:
+
+```sh
+subfinder -d {domain} -silent
+```
+
+**Parser / Filter**:
+
+```text
+Split lines: enabled
+Trim values: enabled
+Remove empty: enabled
+Dedupe: enabled
+Include regex: ^[a-zA-Z0-9.-]+$
+Output mode: Text lines
+```
+
+Second **Shell command**:
+
+```sh
+printf '%s\n' "$FLOW_INPUT_JSON" > parsed.json
+node -e 'const input=JSON.parse(process.env.FLOW_INPUT_JSON); console.log(input.stdout)' > subdomains.txt
+httpx -l subdomains.txt -silent > live-hosts.txt
+```
+
+Then configure **Output file** with **Source: Workspace file path** and **Workspace file path: live-hosts.txt**.
+
+### Example: Save A Clean List Directly
+
+Connect:
+
+```text
+Shell command -> Parser / Filter -> Output file
+```
+
+Set **Parser / Filter** output mode to **Text lines**. Configure **Output file**:
+
+```text
+Filename: cleaned.txt
+Content type: text/plain
+Source: Connected node output
+File content: {{input}}
+```
+
+Because Text lines mode includes `stdout`, the Output file node saves the cleaned newline-separated list.
+
+### Example: Download Curl Output
+
+Create and connect this graph:
+
+```text
+Variables -> Shell command -> Output file
+```
+
+Set **Variables JSON**:
+
+```json
+{
+  "url": "google.com"
+}
+```
+
+Set the **Shell command**:
+
+```sh
+curl -L https://{url}
+```
+
+Set **Output file** fields:
+
+```text
+Filename: google.html
+Content type: text/html
+Source: Connected node output
+File content: {{input}}
+```
+
+Run the workflow, select **Outputs** in the header, and download `google.html`. When a Shell, SSH, or Docker node produces ordinary non-JSON stdout, default `{{input}}` content stores the raw stdout. For a structured JSON result, it stores formatted JSON.
+
+### Example: JSON Report
+
+Connect a node that prints valid JSON to an Output file node configured as:
+
+```text
+Filename: report.json
+Content type: application/json
+Source: Connected node output
+File content: {{input}}
+```
+
+Each successful run creates a new downloadable artifact. Use the trash action in **Outputs** to delete files no longer needed.
+
+### Output File Security
+
+- Filenames are download labels only; slashes, backslashes, and control characters are rejected.
+- Workspace file paths must be relative and cannot escape the private execution directory.
+- The application limits each stored file to 5 MB.
+- Users can list, download, and delete only their own output files.
+- Do not deliberately store credentials or sensitive raw command output without appropriate operational controls and retention policies.
+
 ## Shell Command Node
 
 Use a Shell command node for local command-line tasks executed by the CLIFlow runtime.
@@ -199,6 +420,27 @@ Using `FLOW_INPUT_JSON` is preferable for shell scripts because it avoids insert
 ### Command Failure
 
 Any non-zero exit status fails the node. Standard output and standard error are shown in the live console and retained in the failure details.
+
+### Included Reconnaissance Tools In Docker Compose
+
+The supplied `app` image includes these pinned tools and wordlists for Shell command nodes:
+
+| Tool | Version | Example command |
+| --- | --- | --- |
+| `subfinder` | `v2.14.0` | `subfinder -d example.com -silent > subdomains.txt` |
+| `httpx` | `v1.9.0` | `httpx -l subdomains.txt -silent > live-hosts.txt` |
+| `gobuster` | `v3.8.2` | `gobuster dir -u https://example.com -w "$SECLISTS/Discovery/Web-Content/common.txt"` |
+| Selected SecLists wordlists | downloaded at image build time | `$SECLISTS/Discovery/Web-Content/raft-small-words.txt` |
+
+Files written with relative paths are shared only within that workflow execution. Connect an **Output file** node configured with **Source: Workspace file path** to publish results for download, for example `live-hosts.txt`.
+
+The image installs selected SecLists files at `/opt/seclists` and sets `SECLISTS=/opt/seclists`:
+
+- `Discovery/Web-Content/common.txt`
+- `Discovery/Web-Content/raft-small-words.txt`
+- `Fuzzing/special-chars.txt`
+
+These tools send network requests. Run them only for targets where you have authorization. `subfinder` may require configured provider API keys for some passive sources.
 
 ## SSH Command Node
 
@@ -351,7 +593,7 @@ Prefer a Shell node to extract and encode an individual URL parameter when the u
 
 ## Custom Node Templates
 
-Select **Create template** in the sidebar to create a reusable palette item based on one of the four node types. Drag the template onto the canvas and configure the resulting node in the inspector. Templates are stored with the workflow when you save it.
+Select **Create template** in the sidebar to create a reusable palette item based on the built-in node types. Drag the template onto the canvas and configure the resulting node in the inspector. Templates are stored with the workflow when you save it.
 
 Templates are configuration conveniences; they do not introduce new execution adapters or sandboxing.
 
@@ -366,6 +608,26 @@ When a workflow runs:
 
 Logs and execution status are intended for active workflow observation. Persist important results to a durable external destination through an approved node.
 
+## Interactive Terminal
+
+When `ENABLE_TERMINAL=true`, select **Terminal** in the application header to open an interactive shell backed by a pseudo-terminal. Input, terminal resizing, prompts, ANSI output, and interactive CLI behavior are streamed over an authenticated WebSocket.
+
+Under Docker Compose, this terminal runs inside the `app` container. It can use tools installed in that image, such as `curl` and `ssh`; it is not a terminal on the Docker host.
+
+Local development configuration:
+
+```dotenv
+ENABLE_TERMINAL=true
+```
+
+Public-server configuration:
+
+```dotenv
+ENABLE_TERMINAL=false
+```
+
+An interactive terminal grants an authenticated account general shell access in the application runtime. Keep it disabled for public deployments unless every authorized user is fully trusted and the runtime is isolated from sensitive host resources, credentials, and internal networks.
+
 ## Safe Production Use
 
 CLIFlow executes operational commands for authenticated accounts. Authentication is an access control layer, not execution isolation.
@@ -375,5 +637,6 @@ CLIFlow executes operational commands for authenticated accounts. Authentication
 - Do not store passwords, private keys, or bearer tokens directly in workflow configuration.
 - Keep SSH keys read-only and narrowly authorized on remote machines.
 - Do not mount the host Docker socket into the public application container.
+- Keep the interactive terminal disabled unless it is explicitly needed by fully trusted operators in an isolated runtime.
 - Restrict outbound network destinations available to Webhook and SSH tasks.
 - Run sensitive execution work in a dedicated, constrained worker environment before exposing the platform broadly.

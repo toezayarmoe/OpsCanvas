@@ -19,6 +19,7 @@ export const config = {
     secure: process.env.COOKIE_SECURE === "true" || process.env.NODE_ENV === "production",
   },
   registrationEnabled: (process.env.ALLOW_REGISTRATION || (process.env.NODE_ENV === "production" ? "false" : "true")) === "true",
+  terminalEnabled: (process.env.ENABLE_TERMINAL || (process.env.NODE_ENV === "production" ? "false" : "true")) === "true",
 };
 
 export function assertProductionConfig() {

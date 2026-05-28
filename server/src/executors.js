@@ -1,4 +1,8 @@
 import { spawn } from "node:child_process";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+
+const MAX_OUTPUT_FILE_BYTES = 5 * 1024 * 1024;
 
 function stringifyInput(inputs) {
   return JSON.stringify(inputs.length === 1 ? inputs[0].output : inputs);
@@ -14,6 +18,71 @@ function collectVariables(inputs) {
     if (!provided || typeof provided !== "object" || Array.isArray(provided)) return variables;
     return { ...variables, ...provided };
   }, {});
+}
+
+function formatArtifactInput(inputs) {
+  if (inputs.length === 1) {
+    const output = inputs[0].output;
+    if (output && typeof output === "object" && typeof output.stdout === "string") return output.stdout;
+    if (typeof output === "string") return output;
+    return JSON.stringify(output, null, 2);
+  }
+  return JSON.stringify(inputs, null, 2);
+}
+
+function extractParserValues(output) {
+  if (output == null) return [];
+  if (Array.isArray(output)) return output;
+  if (typeof output === "string") return [output];
+  if (typeof output !== "object") return [String(output)];
+  if (Array.isArray(output.items)) return output.items;
+  if (Array.isArray(output.lines)) return output.lines;
+  if (Array.isArray(output.results)) return output.results;
+  if (typeof output.stdout === "string") return [output.stdout];
+  if (typeof output.body === "string") return [output.body];
+  return [JSON.stringify(output)];
+}
+
+function compileFilterRegex(pattern, label) {
+  if (!pattern) return null;
+  try {
+    return new RegExp(pattern);
+  } catch (error) {
+    throw new Error(`${label} regex is invalid: ${error.message}`);
+  }
+}
+
+function executeParser(config, inputs, context) {
+  const splitLines = config.splitLines !== false;
+  const trim = config.trim !== false;
+  const removeEmpty = config.removeEmpty !== false;
+  const dedupe = config.dedupe !== false;
+  const includeRegex = compileFilterRegex(config.includeRegex, "Include");
+  const excludeRegex = compileFilterRegex(config.excludeRegex, "Exclude");
+  const limit = Number(config.limit) > 0 ? Number(config.limit) : 0;
+
+  let items = inputs.flatMap((input) => extractParserValues(input.output));
+  items = items.flatMap((item) => {
+    const value = typeof item === "string" ? item : JSON.stringify(item);
+    return splitLines ? value.split(/\r?\n/) : [value];
+  });
+  if (trim) items = items.map((item) => item.trim());
+  if (removeEmpty) items = items.filter(Boolean);
+  if (includeRegex) items = items.filter((item) => includeRegex.test(item));
+  if (excludeRegex) items = items.filter((item) => !excludeRegex.test(item));
+  if (dedupe) {
+    const seen = new Set();
+    items = items.filter((item) => {
+      if (seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
+  }
+  if (limit) items = items.slice(0, limit);
+
+  context.log("stdout", `Parser kept ${items.length} item(s).\n`);
+  if (config.outputMode === "json") return { items, count: items.length };
+  return { items, stdout: items.join("\n"), count: items.length };
 }
 
 function runProcess(command, args, options, context) {
@@ -59,11 +128,25 @@ function interpolate(value, inputs, variables) {
   });
 }
 
+async function readWorkspaceFile(workspacePath, sourcePath) {
+  const relativePath = typeof sourcePath === "string" ? sourcePath.trim() : "";
+  if (!relativePath || path.isAbsolute(relativePath)) throw new Error("Workspace source path must be a relative file path.");
+  const resolvedPath = path.resolve(workspacePath, relativePath);
+  if (!resolvedPath.startsWith(`${workspacePath}${path.sep}`)) throw new Error("Workspace source path cannot leave the execution workspace.");
+  const details = await fs.stat(resolvedPath).catch((error) => {
+    if (error.code === "ENOENT") throw new Error(`Workspace output file not found: ${relativePath}.`);
+    throw error;
+  });
+  if (!details.isFile()) throw new Error("Workspace source path must point to a file.");
+  if (details.size > MAX_OUTPUT_FILE_BYTES) throw new Error("Output files support at most 5 MB.");
+  return fs.readFile(resolvedPath);
+}
+
 export async function executeNode(node, inputs, context) {
   const config = node.data?.config || {};
   const inputJson = stringifyInput(inputs);
   const env = { ...process.env, FLOW_INPUT_JSON: inputJson, ...(config.env || {}) };
-  const variables = collectVariables(inputs);
+  const variables = { ...(context.variables || {}), ...collectVariables(inputs) };
 
   switch (node.type) {
     case "variable": {
@@ -75,9 +158,33 @@ export async function executeNode(node, inputs, context) {
       return { variables: declared };
     }
 
+    case "output": {
+      const filename = interpolate(config.filename || "output.json", inputs, variables);
+      let content;
+      if (config.sourceMode === "workspace") {
+        content = await readWorkspaceFile(context.workspacePath, interpolate(config.sourcePath, inputs, variables));
+      } else {
+        const template = config.content || "{{input}}";
+        content = template === "{{input}}" ? formatArtifactInput(inputs) : interpolate(template, inputs, variables);
+      }
+      const artifact = await context.saveArtifact({
+        filename,
+        contentType: config.contentType || "application/json",
+        content,
+      });
+      context.log("stdout", `Saved output file ${artifact.filename} (${artifact.sizeBytes} bytes).\n`);
+      return { artifact };
+    }
+
+    case "parser":
+      return executeParser(config, inputs, context);
+
     case "command":
       if (!config.command?.trim()) throw new Error("Shell command is required.");
-      return runProcess(config.shell || "/bin/sh", ["-lc", interpolate(config.command, inputs, variables)], { env }, context);
+      return runProcess(config.shell || "/bin/sh", ["-lc", interpolate(config.command, inputs, variables)], {
+        cwd: context.workspacePath,
+        env: { ...env, FLOW_WORKSPACE: context.workspacePath },
+      }, context);
 
     case "ssh": {
       if (!config.host || !config.command?.trim()) throw new Error("SSH host and command are required.");
