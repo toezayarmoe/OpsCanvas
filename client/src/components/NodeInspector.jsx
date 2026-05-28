@@ -12,6 +12,21 @@ function Field({ label, children }) {
 
 const inputClass = "w-full rounded-lg border border-zinc-800 bg-[#0b0f17] px-3 py-2 text-sm text-zinc-200 outline-none transition focus:border-emerald-500/70";
 
+const conditionalOperators = [
+  { value: "truthy", label: "Truthy", description: "Passes when the selected value is not empty, false, null, or zero.", pseudo: "if value:" },
+  { value: "falsy", label: "Falsy", description: "Passes when the selected value is empty, false, null, zero, or missing.", pseudo: "if not value:" },
+  { value: "exists", label: "Exists", description: "Passes when the selected path exists and is not null.", pseudo: "if value is not undefined and value is not null:" },
+  { value: "notExists", label: "Does not exist", description: "Passes when the selected path is missing or null.", pseudo: "if value is undefined or value is null:" },
+  { value: "equals", label: "Equals", description: "Passes when the selected value equals the compare value.", pseudo: "if string(value) == compareValue:" },
+  { value: "notEquals", label: "Does not equal", description: "Passes when the selected value is different from the compare value.", pseudo: "if string(value) != compareValue:" },
+  { value: "contains", label: "Contains", description: "Passes when the selected text contains the compare value.", pseudo: "if compareValue in string(value):" },
+  { value: "regex", label: "Regex match", description: "Passes when the selected text matches the regular expression.", pseudo: "if regex(compareValue).test(string(value)):" },
+  { value: "greaterThan", label: "Greater than", description: "Passes when the selected value is numerically greater than the compare value.", pseudo: "if number(value) > number(compareValue):" },
+  { value: "lessThan", label: "Less than", description: "Passes when the selected value is numerically less than the compare value.", pseudo: "if number(value) < number(compareValue):" },
+  { value: "countGreaterThan", label: "Count greater than", description: "Passes when the selected array, object, or line count is greater than the compare value.", pseudo: "if count(value) > number(compareValue):" },
+  { value: "countEquals", label: "Count equals", description: "Passes when the selected array, object, or line count equals the compare value.", pseudo: "if count(value) == number(compareValue):" },
+];
+
 function JsonField({ label, value, onChange }) {
   return (
     <Field label={label}>
@@ -42,6 +57,7 @@ export default function NodeInspector({ width, node, onUpdate, onDelete, onClose
   }
   const config = node.data.config;
   const setConfig = (field, value) => onUpdate({ config: { ...config, [field]: value } });
+  const conditionalOperator = conditionalOperators.find((operator) => operator.value === (config.operator || "truthy")) || conditionalOperators[0];
 
   return (
     <aside style={{ width }} className="shrink-0 overflow-y-auto border-l border-zinc-800/80 bg-[#0b0f16]">
@@ -157,20 +173,15 @@ export default function NodeInspector({ width, node, onUpdate, onDelete, onClose
             </Field>
             <Field label="Operator">
               <select className={inputClass} value={config.operator || "truthy"} onChange={(event) => setConfig("operator", event.target.value)}>
-                <option value="truthy">Truthy</option>
-                <option value="falsy">Falsy</option>
-                <option value="exists">Exists</option>
-                <option value="notExists">Does not exist</option>
-                <option value="equals">Equals</option>
-                <option value="notEquals">Does not equal</option>
-                <option value="contains">Contains</option>
-                <option value="regex">Regex match</option>
-                <option value="greaterThan">Greater than</option>
-                <option value="lessThan">Less than</option>
-                <option value="countGreaterThan">Count greater than</option>
-                <option value="countEquals">Count equals</option>
+                {conditionalOperators.map((operator) => <option key={operator.value} value={operator.value}>{operator.label}</option>)}
               </select>
             </Field>
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+              <p className="text-xs font-medium text-amber-200">{conditionalOperator.label}</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-400">{conditionalOperator.description}</p>
+              <pre className="mt-2 overflow-x-auto rounded-lg border border-zinc-800 bg-[#080b11] p-2 font-mono text-[11px] text-amber-100">{conditionalOperator.pseudo}</pre>
+              {config.invert && <p className="mt-2 text-xs text-zinc-500">Invert result changes this to: <span className="font-mono text-zinc-300">if not condition:</span></p>}
+            </div>
             <Field label="Compare value">
               <input className={inputClass} value={config.value || ""} onChange={(event) => setConfig("value", event.target.value)} placeholder="ready" />
             </Field>

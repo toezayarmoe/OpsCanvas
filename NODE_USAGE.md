@@ -435,6 +435,39 @@ Set the second Conditional node to the inverse rule.
 | Invert result | Reverses the final condition, useful for false branches. |
 | Run when a dependency fails | Allows the condition itself to run after upstream failure or skip. |
 
+### Operator Reference With Pseudocode
+
+In this table, `value` means the data selected by **JSON path**, and `compareValue` means the **Compare value** field.
+
+| Operator | Meaning | Pseudocode |
+| --- | --- | --- |
+| Truthy | Passes when the selected value is not empty, false, null, or zero. | `if value:` |
+| Falsy | Passes when the selected value is empty, false, null, zero, or missing. | `if not value:` |
+| Exists | Passes when the selected path exists and is not null. | `if value is not undefined and value is not null:` |
+| Does not exist | Passes when the selected path is missing or null. | `if value is undefined or value is null:` |
+| Equals | Passes when the selected value equals the compare value. | `if string(value) == compareValue:` |
+| Does not equal | Passes when the selected value is different from the compare value. | `if string(value) != compareValue:` |
+| Contains | Passes when selected text contains the compare value. | `if compareValue in string(value):` |
+| Regex match | Passes when selected text matches the regular expression. | `if regex(compareValue).test(string(value)):` |
+| Greater than | Passes when selected value is numerically greater than the compare value. | `if number(value) > number(compareValue):` |
+| Less than | Passes when selected value is numerically less than the compare value. | `if number(value) < number(compareValue):` |
+| Count greater than | Passes when selected array, object, or line count is greater than the compare value. | `if count(value) > number(compareValue):` |
+| Count equals | Passes when selected array, object, or line count equals the compare value. | `if count(value) == number(compareValue):` |
+
+When **Case sensitive** is disabled, text comparisons use lowercase values before comparing:
+
+```text
+if lowercase(string(value)) contains lowercase(compareValue):
+```
+
+When **Invert result** is enabled, CLIFlow reverses the final condition:
+
+```text
+condition = operator_check(value, compareValue)
+if not condition:
+  run child nodes
+```
+
 ### Example: Run Only When Parser Found Items
 
 Create this graph:
