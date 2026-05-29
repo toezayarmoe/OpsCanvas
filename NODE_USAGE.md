@@ -27,6 +27,120 @@ Use **Export** in the header to download the current canvas as a `.cliflow.json`
 
 Use **Import** to select a previously exported JSON file. Import validates supported node types and connections, then creates a new workflow named with an `(imported)` suffix so it does not overwrite an existing canvas.
 
+### Create A Workflow JSON File Manually
+
+You can create a `.cliflow.json` file without drag and drop. The important parts are:
+
+- `nodes`: each node needs a unique `id`, supported `type`, `position`, and `data.config`.
+- `edges`: each connection references an upstream `source` node ID and downstream `target` node ID.
+- `inputs`: optional global placeholders like `{domain}`.
+- `schedule`: optional cron configuration.
+
+Minimal example with three nodes and two connections:
+
+```json
+{
+  "format": "cliflow-workflow",
+  "version": 1,
+  "workflow": {
+    "name": "Manual recon workflow",
+    "description": "Created by editing JSON directly",
+    "inputs": {
+      "domain": "example.com"
+    },
+    "schedule": {
+      "enabled": false,
+      "cron": "",
+      "inputs": {}
+    },
+    "nodes": [
+      {
+        "id": "find-subdomains",
+        "type": "command",
+        "position": { "x": 120, "y": 120 },
+        "data": {
+          "label": "Find subdomains",
+          "description": "Run subfinder",
+          "status": "idle",
+          "config": {
+            "shell": "/bin/sh",
+            "command": "subfinder -d {domain} -silent",
+            "env": {},
+            "retryCount": 1,
+            "retryDelayMs": 1000,
+            "timeoutSeconds": 120
+          }
+        }
+      },
+      {
+        "id": "clean-subdomains",
+        "type": "parser",
+        "position": { "x": 120, "y": 320 },
+        "data": {
+          "label": "Clean subdomains",
+          "description": "Trim and dedupe output",
+          "status": "idle",
+          "config": {
+            "splitLines": true,
+            "trim": true,
+            "removeEmpty": true,
+            "dedupe": true,
+            "includeRegex": "",
+            "excludeRegex": "",
+            "limit": 0,
+            "outputMode": "lines"
+          }
+        }
+      },
+      {
+        "id": "save-report",
+        "type": "output",
+        "position": { "x": 120, "y": 520 },
+        "data": {
+          "label": "Save report",
+          "description": "Create downloadable file",
+          "status": "idle",
+          "config": {
+            "filename": "subdomains.txt",
+            "contentType": "text/plain",
+            "sourceMode": "input",
+            "sourcePath": "",
+            "content": "{{input}}"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-find-to-clean",
+        "source": "find-subdomains",
+        "target": "clean-subdomains",
+        "animated": true,
+        "style": { "stroke": "#34d399" }
+      },
+      {
+        "id": "edge-clean-to-save",
+        "source": "clean-subdomains",
+        "target": "save-report",
+        "animated": true,
+        "style": { "stroke": "#34d399" }
+      }
+    ],
+    "templates": []
+  }
+}
+```
+
+Save that as `manual-recon.cliflow.json`, then use **Import** in the app.
+
+Supported node `type` values are:
+
+```text
+variable, output, parser, foreach, conditional, command, ssh, docker, webhook
+```
+
+The easiest way to create correct JSON for a complex node is to add one example node in the UI, export the workflow, then copy and edit that node object.
+
 ## Workflow Inputs
 
 Use **Inputs** in the header to define JSON values for the whole workflow:

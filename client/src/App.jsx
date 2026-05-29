@@ -430,7 +430,6 @@ export default function App() {
               onChange={(event) => { setWorkflow({ ...workflow, name: event.target.value }); markChanged(); }}
               className="w-64 bg-transparent text-base font-semibold outline-none"
             />
-            <span className="rounded-md bg-zinc-800/70 px-2 py-1 text-[11px] text-zinc-500">{stats}</span>
           </div>
           <div className="flex gap-2">
             <input ref={importFile} type="file" accept=".json,.cliflow.json,application/json" className="hidden" onChange={importWorkflow} />
@@ -549,7 +548,10 @@ export default function App() {
         )}
         <div className="flex min-h-0 flex-1">
           <div className="flex min-w-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1" onDrop={addDroppedNode} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}>
+            <div className="relative min-h-0 flex-1" onDrop={addDroppedNode} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}>
+              <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-zinc-800/80 bg-[#0b0f16]/90 px-3 py-1.5 text-[11px] font-medium text-zinc-400 shadow-panel backdrop-blur">
+                {stats}
+              </div>
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
