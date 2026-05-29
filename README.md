@@ -98,6 +98,93 @@ npm run dev
 
 Open `http://localhost:5173`.
 
+## Standalone Deployment
+
+Use this path when you want to run OpsCanvas directly on the host without Docker. You still need MySQL 8 and Node.js 20 or later.
+
+1. Install host packages:
+
+```bash
+sudo apt update
+sudo apt install -y nodejs npm mysql-server nginx git build-essential python3 make g++
+```
+
+If your distribution package manager does not provide Node.js 20+, install Node.js from NodeSource or your standard server build process before running `npm ci`.
+
+2. Create the MySQL database and user:
+
+```sql
+CREATE DATABASE cliflow CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'cliflow'@'127.0.0.1' IDENTIFIED BY 'replace-with-a-long-random-password';
+GRANT ALL PRIVILEGES ON cliflow.* TO 'cliflow'@'127.0.0.1';
+FLUSH PRIVILEGES;
+```
+
+3. Place the application at `/opt/opscanvas`:
+
+```bash
+sudo useradd --system --create-home --shell /usr/sbin/nologin opscanvas
+sudo mkdir -p /opt/opscanvas /etc/opscanvas
+sudo rsync -a --delete ./ /opt/opscanvas/
+sudo chown -R opscanvas:opscanvas /opt/opscanvas
+```
+
+4. Configure environment:
+
+```bash
+sudo cp /opt/opscanvas/deploy/standalone/opscanvas.env.example /etc/opscanvas/opscanvas.env
+sudo nano /etc/opscanvas/opscanvas.env
+```
+
+Set `CLIENT_ORIGIN` to your public HTTPS origin, set `DB_PASSWORD`, keep `ALLOW_REGISTRATION=false`, and keep `ENABLE_TERMINAL=false` unless every account is fully trusted.
+
+5. Build the app:
+
+```bash
+cd /opt/opscanvas
+sudo -u opscanvas npm ci
+sudo -u opscanvas npm run build
+sudo -u opscanvas npm prune --omit=dev
+```
+
+6. Install and start systemd service:
+
+```bash
+sudo cp /opt/opscanvas/deploy/standalone/opscanvas.service /etc/systemd/system/opscanvas.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now opscanvas
+sudo systemctl status opscanvas
+```
+
+7. Create the first admin account:
+
+```bash
+cd /opt/opscanvas
+sudo -u opscanvas env $(sudo cat /etc/opscanvas/opscanvas.env | xargs) \
+  ADMIN_EMAIL=admin@example.com \
+  ADMIN_PASSWORD='use-a-long-random-password' \
+  npm run create-user -w server
+```
+
+8. Configure Nginx reverse proxy:
+
+```bash
+sudo cp /opt/opscanvas/deploy/standalone/opscanvas-nginx.conf /etc/nginx/sites-available/opscanvas
+sudo ln -sf /etc/nginx/sites-available/opscanvas /etc/nginx/sites-enabled/opscanvas
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Replace `flow.example.com` in the Nginx file with your domain and add TLS with Certbot or your normal certificate process. WebSocket paths `/ws` and `/terminal` must be proxied with upgrade headers.
+
+Useful standalone commands:
+
+```bash
+sudo systemctl restart opscanvas
+sudo journalctl -u opscanvas -f
+curl http://127.0.0.1:4000/api/health
+```
+
 ## Authentication
 
 Sessions are opaque random tokens. Only their SHA-256 hashes are persisted in MySQL; cookies are `HttpOnly` and `SameSite=Strict`. Passwords are hashed with bcrypt. State-changing browser requests must originate from `CLIENT_ORIGIN`.

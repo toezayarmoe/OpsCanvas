@@ -1,0 +1,22 @@
+[Unit]
+Description=OpsCanvas visual CLI automation platform
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opscanvas
+Group=opscanvas
+WorkingDirectory=/opt/opscanvas
+EnvironmentFile=/etc/opscanvas/opscanvas.env
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/opscanvas /tmp
+
+[Install]
+WantedBy=multi-user.target
