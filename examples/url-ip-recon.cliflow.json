@@ -1,0 +1,383 @@
+{
+  "format": "cliflow-workflow",
+  "version": 1,
+  "workflow": {
+    "name": "URL/IP recon pipeline",
+    "description": "Authorized single-target workflow for HTTP/S URLs and IP addresses such as http://127.0.0.1. Probes the target, creates JSONL table-friendly output, and optionally runs Nuclei/Gobuster.",
+    "inputs": {
+      "target_url": "http://127.0.0.1",
+      "wordlist": "/opt/seclists/Discovery/Web-Content/common.txt",
+      "run_nuclei": false,
+      "nuclei_severity": "low,medium,high,critical",
+      "run_gobuster": false
+    },
+    "schedule": {
+      "enabled": false,
+      "cron": "",
+      "inputs": {}
+    },
+    "nodes": [
+      {
+        "id": "validate-target-url",
+        "type": "command",
+        "position": {
+          "x": 100,
+          "y": 80
+        },
+        "data": {
+          "label": "Validate URL/IP target",
+          "description": "Normalize target_url into a HTTP/S URL",
+          "status": "idle",
+          "config": {
+            "shell": "/bin/sh",
+            "command": "set -eu\nmkdir -p reports\nTARGET='{target_url}' node <<'JS' > reports/target.json\nconst raw = process.env.TARGET.trim();\nconst value = raw.includes('://') ? raw : `http://${raw}`;\nlet url;\ntry { url = new URL(value); } catch { console.error('Invalid target_url. Use http://127.0.0.1, https://example.com, or a host/IP.'); process.exit(2); }\nif (!['http:', 'https:'].includes(url.protocol)) { console.error('Only http and https targets are supported.'); process.exit(2); }\nurl.hash = '';\nconst normalized = url.toString().replace(/\\/$/, '');\nconsole.log(JSON.stringify({ target_url: normalized, hostname: url.hostname, protocol: url.protocol.slice(0, -1), started: new Date().toISOString(), note: 'authorized targets only' }));\nJS\nnode -e 'const fs=require(\"fs\"); const data=JSON.parse(fs.readFileSync(\"reports/target.json\",\"utf8\")); console.log(data.target_url)' > target_urls.txt\ncat reports/target.json",
+            "env": {},
+            "retryCount": 0,
+            "retryDelayMs": 0,
+            "timeoutSeconds": 30
+          }
+        }
+      },
+      {
+        "id": "probe-target-url",
+        "type": "command",
+        "position": {
+          "x": 100,
+          "y": 280
+        },
+        "data": {
+          "label": "Probe target URL",
+          "description": "Check reachability and save HTTP headers plus JSONL probe metadata",
+          "status": "idle",
+          "config": {
+            "shell": "/bin/sh",
+            "command": "set -eu\nmkdir -p reports\nurl=$(node -e 'const fs=require(\"fs\"); const data=JSON.parse(fs.readFileSync(\"reports/target.json\",\"utf8\")); console.log(data.target_url)')\n: > live_hosts.txt\n: > reports/http_probe.jsonl\n: > reports/tech_headers.txt\nheaders=$(mktemp)\ncode=$(curl -k -L -I -sS --max-time 8 -o \"$headers\" -w '%{http_code}' \"$url\" 2>/dev/null || true)\nserver=$(awk -F': ' 'tolower($1)==\"server\"{print $2; exit}' \"$headers\" | tr -d '\\r')\nif [ \"$code\" -ge 200 ] 2>/dev/null && [ \"$code\" -lt 600 ] 2>/dev/null; then\n  echo \"$url\" > live_hosts.txt\n  live=true\nelse\n  live=false\nfi\n{\n  printf '### %s (%s)\\n' \"$url\" \"${code:-000}\"\n  cat \"$headers\"\n  printf '\\n'\n} > reports/tech_headers.txt\nnode -e 'console.log(JSON.stringify({url:process.argv[1],live:process.argv[2]===\"true\",status_code:Number(process.argv[3]||0),server:process.argv[4]||\"unknown\",timestamp:new Date().toISOString()}))' \"$url\" \"$live\" \"${code:-0}\" \"${server:-unknown}\" > reports/http_probe.jsonl\nrm -f \"$headers\"\ncat live_hosts.txt",
+            "env": {},
+            "retryCount": 1,
+            "retryDelayMs": 2000,
+            "timeoutSeconds": 60
+          }
+        }
+      },
+      {
+        "id": "clean-live-url",
+        "type": "parser",
+        "position": {
+          "x": 100,
+          "y": 480
+        },
+        "data": {
+          "label": "Clean live URL",
+          "description": "Normalize reachable URL output",
+          "status": "idle",
+          "config": {
+            "splitLines": true,
+            "trim": true,
+            "removeEmpty": true,
+            "dedupe": true,
+            "includeRegex": "^https?://",
+            "excludeRegex": "",
+            "limit": 0,
+            "outputMode": "lines"
+          }
+        }
+      },
+      {
+        "id": "save-target-metadata",
+        "type": "output",
+        "position": {
+          "x": -260,
+          "y": 280
+        },
+        "data": {
+          "label": "Download target metadata",
+          "description": "Save normalized target metadata",
+          "status": "idle",
+          "config": {
+            "filename": "target.json",
+            "contentType": "application/json",
+            "sourceMode": "workspace",
+            "sourcePath": "reports/target.json",
+            "content": "{{input}}"
+          }
+        }
+      },
+      {
+        "id": "save-live-url",
+        "type": "output",
+        "position": {
+          "x": -260,
+          "y": 680
+        },
+        "data": {
+          "label": "Download live URL",
+          "description": "Save reachable URL if the target responded",
+          "status": "idle",
+          "config": {
+            "filename": "live-hosts.txt",
+            "contentType": "text/plain",
+            "sourceMode": "input",
+            "sourcePath": "",
+            "content": "{{input}}"
+          }
+        }
+      },
+      {
+        "id": "save-http-probe",
+        "type": "output",
+        "position": {
+          "x": -260,
+          "y": 880
+        },
+        "data": {
+          "label": "Download HTTP probe JSONL",
+          "description": "Save table-friendly HTTP probe result",
+          "status": "idle",
+          "config": {
+            "filename": "http-probe.jsonl",
+            "contentType": "application/jsonl",
+            "sourceMode": "workspace",
+            "sourcePath": "reports/http_probe.jsonl",
+            "content": "{{input}}",
+            "runAfterFailure": true
+          }
+        }
+      },
+      {
+        "id": "save-target-headers",
+        "type": "output",
+        "position": {
+          "x": -260,
+          "y": 1080
+        },
+        "data": {
+          "label": "Download target headers",
+          "description": "Save raw response headers",
+          "status": "idle",
+          "config": {
+            "filename": "technology-headers.txt",
+            "contentType": "text/plain",
+            "sourceMode": "workspace",
+            "sourcePath": "reports/tech_headers.txt",
+            "content": "{{input}}",
+            "runAfterFailure": true
+          }
+        }
+      },
+      {
+        "id": "optional-nuclei-url",
+        "type": "command",
+        "position": {
+          "x": 420,
+          "y": 680
+        },
+        "data": {
+          "label": "Optional Nuclei scan",
+          "description": "Disabled by default; set run_nuclei=true for authorized targets",
+          "status": "idle",
+          "config": {
+            "shell": "/bin/sh",
+            "command": "set -eu\nnode -e 'const input=JSON.parse(process.env.FLOW_INPUT_JSON); const items=input.items||String(input.stdout||\"\").split(/\\r?\\n/).filter(Boolean); console.log(items.join(\"\\n\"));' > live_hosts.txt\nmkdir -p reports\nwrite_status() { node -e 'console.log(JSON.stringify({tool:process.argv[1],status:process.argv[2],reason:process.argv[3]||\"\",findings:Number(process.argv[4]||0),timestamp:new Date().toISOString()}))' \"$1\" \"$2\" \"$3\" \"$4\"; }\nif [ ! -s live_hosts.txt ]; then write_status nuclei skipped 'target is not reachable over HTTP(S)' 0 > reports/nuclei.jsonl; cat reports/nuclei.jsonl; exit 0; fi\nif [ \"{run_nuclei}\" != \"true\" ]; then write_status nuclei disabled 'set run_nuclei=true for authorized targets' 0 > reports/nuclei.jsonl; cat reports/nuclei.jsonl; exit 0; fi\nif command -v nuclei >/dev/null 2>&1; then\n  nuclei -l live_hosts.txt -severity \"{nuclei_severity}\" -jsonl -o reports/nuclei.jsonl || true\n  if [ ! -s reports/nuclei.jsonl ]; then write_status nuclei completed 'no findings returned' 0 > reports/nuclei.jsonl; fi\nelse\n  write_status nuclei missing 'nuclei not installed in this runtime' 0 > reports/nuclei.jsonl\nfi\ncat reports/nuclei.jsonl",
+            "env": {},
+            "retryCount": 0,
+            "retryDelayMs": 0,
+            "timeoutSeconds": 900,
+            "runAfterFailure": true
+          }
+        }
+      },
+      {
+        "id": "save-nuclei-url",
+        "type": "output",
+        "position": {
+          "x": 420,
+          "y": 880
+        },
+        "data": {
+          "label": "Download Nuclei JSONL",
+          "description": "Save Nuclei findings or status as JSONL",
+          "status": "idle",
+          "config": {
+            "filename": "nuclei.jsonl",
+            "contentType": "application/jsonl",
+            "sourceMode": "workspace",
+            "sourcePath": "reports/nuclei.jsonl",
+            "content": "{{input}}",
+            "runAfterFailure": true
+          }
+        }
+      },
+      {
+        "id": "optional-gobuster-url",
+        "type": "foreach",
+        "position": {
+          "x": 760,
+          "y": 680
+        },
+        "data": {
+          "label": "Optional Gobuster directories",
+          "description": "Disabled by default; set run_gobuster=true",
+          "status": "idle",
+          "config": {
+            "shell": "/bin/sh",
+            "command": "mkdir -p reports/gobuster\nif [ \"{run_gobuster}\" != \"true\" ]; then exit 0; fi\nif ! command -v gobuster >/dev/null 2>&1; then echo 'gobuster not installed' >> reports/gobuster.txt; exit 0; fi\nsafe=$(printf '%s' \"$FLOW_ITEM\" | tr '/:?' '___')\ngobuster dir -u \"$FLOW_ITEM\" -w \"{wordlist}\" -q -o \"reports/gobuster/$safe.txt\" || true",
+            "itemVariable": "item",
+            "concurrency": 2,
+            "splitLines": true,
+            "trim": true,
+            "removeEmpty": true,
+            "continueOnError": true,
+            "retryCount": 0,
+            "retryDelayMs": 0,
+            "timeoutSeconds": 600
+          }
+        }
+      },
+      {
+        "id": "merge-gobuster-url",
+        "type": "command",
+        "position": {
+          "x": 760,
+          "y": 880
+        },
+        "data": {
+          "label": "Merge Gobuster reports",
+          "description": "Merge optional Gobuster output",
+          "status": "idle",
+          "config": {
+            "shell": "/bin/sh",
+            "command": "mkdir -p reports/gobuster\nif [ \"{run_gobuster}\" != \"true\" ]; then echo 'Gobuster disabled. Set run_gobuster=true for authorized targets.' > reports/gobuster.txt; cat reports/gobuster.txt; exit 0; fi\ncat reports/gobuster/*.txt > reports/gobuster.txt 2>/dev/null || echo 'No gobuster findings or reports.' > reports/gobuster.txt\ncat reports/gobuster.txt",
+            "env": {},
+            "retryCount": 0,
+            "retryDelayMs": 0,
+            "timeoutSeconds": 60,
+            "runAfterFailure": true
+          }
+        }
+      },
+      {
+        "id": "save-gobuster-url",
+        "type": "output",
+        "position": {
+          "x": 760,
+          "y": 1080
+        },
+        "data": {
+          "label": "Download Gobuster report",
+          "description": "Save optional Gobuster merged output",
+          "status": "idle",
+          "config": {
+            "filename": "gobuster.txt",
+            "contentType": "text/plain",
+            "sourceMode": "workspace",
+            "sourcePath": "reports/gobuster.txt",
+            "content": "{{input}}",
+            "runAfterFailure": true
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "url-e1",
+        "source": "validate-target-url",
+        "target": "probe-target-url",
+        "animated": true,
+        "style": {
+          "stroke": "#34d399"
+        }
+      },
+      {
+        "id": "url-e2",
+        "source": "validate-target-url",
+        "target": "save-target-metadata",
+        "animated": true,
+        "style": {
+          "stroke": "#34d399"
+        }
+      },
+      {
+        "id": "url-e3",
+        "source": "probe-target-url",
+        "target": "clean-live-url",
+        "animated": true,
+        "style": {
+          "stroke": "#34d399"
+        }
+      },
+      {
+        "id": "url-e4",
+        "source": "clean-live-url",
+        "target": "save-live-url",
+        "animated": true,
+        "style": {
+          "stroke": "#34d399"
+        }
+      },
+      {
+        "id": "url-e5",
+        "source": "probe-target-url",
+        "target": "save-http-probe",
+        "animated": true,
+        "style": {
+          "stroke": "#34d399"
+        }
+      },
+      {
+        "id": "url-e6",
+        "source": "probe-target-url",
+        "target": "save-target-headers",
+        "animated": true,
+        "style": {
+          "stroke": "#34d399"
+        }
+      },
+      {
+        "id": "url-e7",
+        "source": "clean-live-url",
+        "target": "optional-nuclei-url",
+        "animated": true,
+        "style": {
+          "stroke": "#34d399"
+        }
+      },
+      {
+        "id": "url-e8",
+        "source": "optional-nuclei-url",
+        "target": "save-nuclei-url",
+        "animated": true,
+        "style": {
+          "stroke": "#34d399"
+        }
+      },
+      {
+        "id": "url-e9",
+        "source": "clean-live-url",
+        "target": "optional-gobuster-url",
+        "animated": true,
+        "style": {
+          "stroke": "#34d399"
+        }
+      },
+      {
+        "id": "url-e10",
+        "source": "optional-gobuster-url",
+        "target": "merge-gobuster-url",
+        "animated": true,
+        "style": {
+          "stroke": "#34d399"
+        }
+      },
+      {
+        "id": "url-e11",
+        "source": "merge-gobuster-url",
+        "target": "save-gobuster-url",
+        "animated": true,
+        "style": {
+          "stroke": "#34d399"
+        }
+      }
+    ],
+    "templates": []
+  }
+}

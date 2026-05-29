@@ -268,6 +268,8 @@ The full operator guide is in [NODE_USAGE.md](NODE_USAGE.md). Key runtime facts:
 - **Docker container** invokes `docker run --rm`. The supplied public-server Compose setup intentionally has no Docker socket or Docker CLI access, so Docker nodes require a separately isolated Docker-capable execution environment.
 - **Webhook** issues HTTP requests using server-side `fetch`; restrict allowed destinations before allowing untrusted operators.
 
+Example workflows are in [examples](examples/), including a domain-oriented subScraper-style pipeline and a URL/IP pipeline for targets such as `http://127.0.0.1`.
+
 When a node prints valid JSON, it becomes structured downstream output. Otherwise the engine creates `{ "stdout": "...", "stderr": "..." }`. Downstream shell, SSH, and Docker tasks receive dependency results through `FLOW_INPUT_JSON`; shell commands, SSH commands, Docker commands, webhook URLs, and webhook request bodies may use `{{input}}` and named `{variable}` placeholders from connected Variables nodes. Relative files written by Shell nodes are kept in a private temporary directory for that run and deleted when execution finishes unless an Output file node publishes them.
 
 ## Security Boundary

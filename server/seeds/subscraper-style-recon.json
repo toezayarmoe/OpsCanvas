@@ -1,0 +1,691 @@
+{
+  "id": "subscraper-style-recon",
+  "name": "subScraper-style recon pipeline",
+  "description": "Authorized recon workflow inspired by subScraper: passive subdomain collection, cleanup, live probing, JSONL technology output, and optional Nuclei/Gobuster/Nikto branches.",
+  "inputs": {
+    "domain": "example.com",
+    "wordlist": "/opt/seclists/Discovery/Web-Content/common.txt",
+    "run_nuclei": false,
+    "nuclei_severity": "low,medium,high,critical",
+    "run_gobuster": false,
+    "run_nikto": false
+  },
+  "schedule": {
+    "enabled": false,
+    "cron": "",
+    "inputs": {}
+  },
+  "nodes": [
+    {
+      "id": "validate-target",
+      "type": "command",
+      "position": {
+        "x": 80,
+        "y": 80
+      },
+      "data": {
+        "label": "Validate target",
+        "description": "Prepare workspace and validate authorized domain input",
+        "status": "idle",
+        "config": {
+          "shell": "/bin/sh",
+          "command": "set -eu\nmkdir -p reports\nif ! printf '%s' \"{domain}\" | grep -Eq '^[A-Za-z0-9.-]+$'; then\n  echo 'Invalid domain. Use a bare authorized domain such as example.com.' >&2\n  exit 2\nfi\nprintf '{\"target\":\"%s\",\"started\":\"%s\",\"note\":\"authorized targets only\"}\\n' \"{domain}\" \"$(date -u +%FT%TZ)\" > reports/metadata.json\ncat reports/metadata.json",
+          "env": {},
+          "retryCount": 0,
+          "retryDelayMs": 0,
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "passive-enum",
+      "type": "command",
+      "position": {
+        "x": 80,
+        "y": 270
+      },
+      "data": {
+        "label": "Passive subdomain collection",
+        "description": "Collect subdomains from subfinder and certificate transparency",
+        "status": "idle",
+        "config": {
+          "shell": "/bin/sh",
+          "command": "set -eu\n: > raw_subdomains.txt\nif command -v subfinder >/dev/null 2>&1; then\n  subfinder -d \"{domain}\" -silent >> raw_subdomains.txt || true\nelse\n  echo 'subfinder not installed; continuing with web sources' >&2\nfi\nTARGET_DOMAIN=\"{domain}\" node <<'JS' >> raw_subdomains.txt\nconst domain = process.env.TARGET_DOMAIN;\nconst clean = (value) => String(value || '').replace(/^\\*\\./, '').toLowerCase();\nasync function crtsh() {\n  const url = `https://crt.sh/?q=%25.${domain}&output=json`;\n  const response = await fetch(url, { signal: AbortSignal.timeout(20000) });\n  if (!response.ok) return;\n  const rows = await response.json().catch(() => []);\n  for (const row of rows) {\n    for (const name of String(row.name_value || '').split(/\\n+/)) {\n      const host = clean(name.trim());\n      if (host.endsWith(`.${domain}`) || host === domain) console.log(host);\n    }\n  }\n}\nasync function certspotter() {\n  const url = `https://api.certspotter.com/v1/issuances?domain=${encodeURIComponent(domain)}&include_subdomains=true&expand=dns_names`;\n  const response = await fetch(url, { signal: AbortSignal.timeout(20000) }).catch(() => null);\n  if (!response || !response.ok) return;\n  const rows = await response.json().catch(() => []);\n  for (const row of rows) {\n    for (const name of row.dns_names || []) {\n      const host = clean(name);\n      if (host.endsWith(`.${domain}`) || host === domain) console.log(host);\n    }\n  }\n}\nawait Promise.allSettled([crtsh(), certspotter()]);\nJS\nsort -u raw_subdomains.txt",
+          "env": {},
+          "retryCount": 1,
+          "retryDelayMs": 2000,
+          "timeoutSeconds": 180
+        }
+      }
+    },
+    {
+      "id": "clean-subdomains",
+      "type": "parser",
+      "position": {
+        "x": 80,
+        "y": 470
+      },
+      "data": {
+        "label": "Clean subdomains",
+        "description": "Split, trim, dedupe, and keep hostname-like values",
+        "status": "idle",
+        "config": {
+          "splitLines": true,
+          "trim": true,
+          "removeEmpty": true,
+          "dedupe": true,
+          "includeRegex": "^[A-Za-z0-9.-]+$",
+          "excludeRegex": "",
+          "limit": 0,
+          "outputMode": "lines"
+        }
+      }
+    },
+    {
+      "id": "save-subdomains",
+      "type": "output",
+      "position": {
+        "x": -260,
+        "y": 670
+      },
+      "data": {
+        "label": "Download subdomains",
+        "description": "Save cleaned subdomain list",
+        "status": "idle",
+        "config": {
+          "filename": "subdomains.txt",
+          "contentType": "text/plain",
+          "sourceMode": "input",
+          "sourcePath": "",
+          "content": "{{input}}"
+        }
+      }
+    },
+    {
+      "id": "has-subdomains",
+      "type": "conditional",
+      "position": {
+        "x": 80,
+        "y": 670
+      },
+      "data": {
+        "label": "Has subdomains?",
+        "description": "Only continue if passive enumeration found hosts",
+        "status": "idle",
+        "config": {
+          "path": "items",
+          "operator": "countGreaterThan",
+          "value": "0",
+          "caseSensitive": true,
+          "invert": false
+        }
+      }
+    },
+    {
+      "id": "probe-live-hosts",
+      "type": "command",
+      "position": {
+        "x": 80,
+        "y": 870
+      },
+      "data": {
+        "label": "Probe live hosts",
+        "description": "Use curl HEAD requests to find reachable HTTP/S hosts",
+        "status": "idle",
+        "config": {
+          "shell": "/bin/sh",
+          "command": "set -eu\nnode -e 'const input=JSON.parse(process.env.FLOW_INPUT_JSON); const items=input.items||String(input.stdout||\"\").split(/\\r?\\n/).filter(Boolean); console.log(items.join(\"\\n\"));' > subdomains.txt\n: > live_hosts.txt\n: > reports/tech_headers.txt\nwhile IFS= read -r host; do\n  [ -n \"$host\" ] || continue\n  for scheme in https http; do\n    url=\"$scheme://$host\"\n    code=$(curl -k -L -I -sS --max-time 8 -o /tmp/opscanvas_headers.$$ -w '%{http_code}' \"$url\" 2>/dev/null || true)\n    if [ \"$code\" -ge 200 ] 2>/dev/null && [ \"$code\" -lt 600 ] 2>/dev/null; then\n      echo \"$url\" >> live_hosts.txt\n      {\n        printf '### %s (%s)\\n' \"$url\" \"$code\"\n        cat /tmp/opscanvas_headers.$$\n        printf '\\n'\n      } >> reports/tech_headers.txt\n      break\n    fi\n  done\ndone < subdomains.txt\nrm -f /tmp/opscanvas_headers.$$\nsort -u live_hosts.txt",
+          "env": {},
+          "retryCount": 1,
+          "retryDelayMs": 2000,
+          "timeoutSeconds": 300
+        }
+      }
+    },
+    {
+      "id": "clean-live-hosts",
+      "type": "parser",
+      "position": {
+        "x": 80,
+        "y": 1070
+      },
+      "data": {
+        "label": "Clean live URLs",
+        "description": "Normalize reachable URLs",
+        "status": "idle",
+        "config": {
+          "splitLines": true,
+          "trim": true,
+          "removeEmpty": true,
+          "dedupe": true,
+          "includeRegex": "^https?://",
+          "excludeRegex": "",
+          "limit": 0,
+          "outputMode": "lines"
+        }
+      }
+    },
+    {
+      "id": "save-live-hosts",
+      "type": "output",
+      "position": {
+        "x": -260,
+        "y": 1270
+      },
+      "data": {
+        "label": "Download live hosts",
+        "description": "Save reachable URL list",
+        "status": "idle",
+        "config": {
+          "filename": "live-hosts.txt",
+          "contentType": "text/plain",
+          "sourceMode": "input",
+          "sourcePath": "",
+          "content": "{{input}}"
+        }
+      }
+    },
+    {
+      "id": "save-tech-headers",
+      "type": "output",
+      "position": {
+        "x": -260,
+        "y": 1460
+      },
+      "data": {
+        "label": "Download technology headers",
+        "description": "Save response headers for manual technology review",
+        "status": "idle",
+        "config": {
+          "filename": "technology-headers.txt",
+          "contentType": "text/plain",
+          "sourceMode": "workspace",
+          "sourcePath": "reports/tech_headers.txt",
+          "content": "{{input}}"
+        }
+      }
+    },
+    {
+      "id": "has-live-hosts",
+      "type": "conditional",
+      "position": {
+        "x": 80,
+        "y": 1270
+      },
+      "data": {
+        "label": "Has live hosts?",
+        "description": "Gate optional active scanners",
+        "status": "idle",
+        "config": {
+          "path": "items",
+          "operator": "countGreaterThan",
+          "value": "0",
+          "caseSensitive": true,
+          "invert": false
+        }
+      }
+    },
+    {
+      "id": "fingerprint-servers",
+      "type": "foreach",
+      "position": {
+        "x": 80,
+        "y": 1460
+      },
+      "data": {
+        "label": "Fingerprint server headers",
+        "description": "Create a URL-to-Server-header TSV",
+        "status": "idle",
+        "config": {
+          "shell": "/bin/sh",
+          "command": "mkdir -p reports\nserver=$(curl -k -I -sS --max-time 8 \"$FLOW_ITEM\" 2>/dev/null | awk -F': ' 'tolower($1)==\"server\"{print $2; exit}' | tr -d '\\r')\nserver=${server:-unknown}\nprintf '%s\\t%s\\n' \"$FLOW_ITEM\" \"$server\" >> reports/technology.tsv\nnode -e 'console.log(JSON.stringify({url:process.argv[1],server:process.argv[2],status:\"fingerprinted\",timestamp:new Date().toISOString()}))' \"$FLOW_ITEM\" \"$server\" >> reports/technology.jsonl",
+          "itemVariable": "item",
+          "concurrency": 5,
+          "splitLines": true,
+          "trim": true,
+          "removeEmpty": true,
+          "continueOnError": true,
+          "retryCount": 0,
+          "retryDelayMs": 0,
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "save-technology",
+      "type": "output",
+      "position": {
+        "x": -260,
+        "y": 1860
+      },
+      "data": {
+        "label": "Download technology TSV",
+        "description": "Save URL/server-header mapping",
+        "status": "idle",
+        "config": {
+          "filename": "technology.tsv",
+          "contentType": "text/tab-separated-values",
+          "sourceMode": "workspace",
+          "sourcePath": "reports/technology.tsv",
+          "content": "{{input}}",
+          "runAfterFailure": true
+        }
+      }
+    },
+    {
+      "id": "ensure-technology",
+      "type": "command",
+      "position": {
+        "x": 80,
+        "y": 1660
+      },
+      "data": {
+        "label": "Prepare technology report",
+        "description": "Create a placeholder technology report when no live hosts exist",
+        "status": "idle",
+        "config": {
+          "shell": "/bin/sh",
+          "command": "mkdir -p reports\nif [ ! -f reports/technology.tsv ]; then echo 'No live hosts to fingerprint.' > reports/technology.tsv; fi\nif [ ! -f reports/technology.jsonl ]; then printf '{\"tool\":\"fingerprint\",\"status\":\"skipped\",\"reason\":\"no live hosts\",\"rows\":0}\\n' > reports/technology.jsonl; fi\ncat reports/technology.tsv",
+          "env": {},
+          "runAfterFailure": true,
+          "retryCount": 0,
+          "retryDelayMs": 0,
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "optional-nuclei",
+      "type": "command",
+      "position": {
+        "x": 420,
+        "y": 1460
+      },
+      "data": {
+        "label": "Optional Nuclei scan",
+        "description": "Disabled by default; set run_nuclei=true for authorized targets",
+        "status": "idle",
+        "config": {
+          "shell": "/bin/sh",
+          "command": "set -eu\nnode -e 'const input=JSON.parse(process.env.FLOW_INPUT_JSON); const items=input.items||String(input.stdout||\"\").split(/\\r?\\n/).filter(Boolean); console.log(items.join(\"\\n\"));' > live_hosts.txt\nmkdir -p reports\nwrite_status() { node -e 'console.log(JSON.stringify({tool:process.argv[1],status:process.argv[2],reason:process.argv[3]||\"\",findings:Number(process.argv[4]||0),timestamp:new Date().toISOString()}))' \"$1\" \"$2\" \"$3\" \"$4\"; }\nif [ ! -s live_hosts.txt ]; then\n  write_status nuclei skipped 'no live hosts available' 0 > reports/nuclei.jsonl\n  cat reports/nuclei.jsonl\n  exit 0\nfi\nif [ \"{run_nuclei}\" != \"true\" ]; then\n  write_status nuclei disabled 'set run_nuclei=true for authorized targets' 0 > reports/nuclei.jsonl\n  cat reports/nuclei.jsonl\n  exit 0\nfi\nif command -v nuclei >/dev/null 2>&1; then\n  nuclei -l live_hosts.txt -severity \"{nuclei_severity}\" -jsonl -o reports/nuclei.jsonl || true\n  if [ ! -s reports/nuclei.jsonl ]; then write_status nuclei completed 'no findings returned' 0 > reports/nuclei.jsonl; fi\nelse\n  write_status nuclei missing 'nuclei not installed in this runtime' 0 > reports/nuclei.jsonl\nfi\ncat reports/nuclei.jsonl",
+          "env": {},
+          "retryCount": 0,
+          "retryDelayMs": 0,
+          "timeoutSeconds": 900
+        }
+      }
+    },
+    {
+      "id": "save-nuclei",
+      "type": "output",
+      "position": {
+        "x": 420,
+        "y": 1660
+      },
+      "data": {
+        "label": "Download Nuclei JSONL",
+        "description": "Save optional nuclei output",
+        "status": "idle",
+        "config": {
+          "filename": "nuclei.jsonl",
+          "contentType": "application/jsonl",
+          "sourceMode": "workspace",
+          "sourcePath": "reports/nuclei.jsonl",
+          "content": "{{input}}",
+          "runAfterFailure": true
+        }
+      }
+    },
+    {
+      "id": "optional-gobuster",
+      "type": "foreach",
+      "position": {
+        "x": 760,
+        "y": 1460
+      },
+      "data": {
+        "label": "Optional Gobuster directories",
+        "description": "Disabled by default; set run_gobuster=true",
+        "status": "idle",
+        "config": {
+          "shell": "/bin/sh",
+          "command": "mkdir -p reports/gobuster\nif [ \"{run_gobuster}\" != \"true\" ]; then exit 0; fi\nif ! command -v gobuster >/dev/null 2>&1; then echo 'gobuster not installed' >> reports/gobuster.txt; exit 0; fi\nsafe=$(printf '%s' \"$FLOW_ITEM\" | tr '/:?' '___')\ngobuster dir -u \"$FLOW_ITEM\" -w \"{wordlist}\" -q -o \"reports/gobuster/$safe.txt\" || true",
+          "itemVariable": "item",
+          "concurrency": 2,
+          "splitLines": true,
+          "trim": true,
+          "removeEmpty": true,
+          "continueOnError": true,
+          "retryCount": 0,
+          "retryDelayMs": 0,
+          "timeoutSeconds": 600
+        }
+      }
+    },
+    {
+      "id": "merge-gobuster",
+      "type": "command",
+      "position": {
+        "x": 760,
+        "y": 1660
+      },
+      "data": {
+        "label": "Merge Gobuster reports",
+        "description": "Merge optional Gobuster per-host reports",
+        "status": "idle",
+        "config": {
+          "shell": "/bin/sh",
+          "command": "mkdir -p reports/gobuster\nif [ \"{run_gobuster}\" != \"true\" ]; then echo 'Gobuster disabled. Set run_gobuster=true for authorized targets.' > reports/gobuster.txt; cat reports/gobuster.txt; exit 0; fi\ncat reports/gobuster/*.txt > reports/gobuster.txt 2>/dev/null || echo 'No gobuster findings or reports.' > reports/gobuster.txt\ncat reports/gobuster.txt",
+          "env": {},
+          "runAfterFailure": true,
+          "retryCount": 0,
+          "retryDelayMs": 0,
+          "timeoutSeconds": 60
+        }
+      }
+    },
+    {
+      "id": "save-gobuster",
+      "type": "output",
+      "position": {
+        "x": 760,
+        "y": 1860
+      },
+      "data": {
+        "label": "Download Gobuster report",
+        "description": "Save optional Gobuster merged output",
+        "status": "idle",
+        "config": {
+          "filename": "gobuster.txt",
+          "contentType": "text/plain",
+          "sourceMode": "workspace",
+          "sourcePath": "reports/gobuster.txt",
+          "content": "{{input}}",
+          "runAfterFailure": true
+        }
+      }
+    },
+    {
+      "id": "optional-nikto",
+      "type": "foreach",
+      "position": {
+        "x": 1100,
+        "y": 1460
+      },
+      "data": {
+        "label": "Optional Nikto scan",
+        "description": "Disabled by default; set run_nikto=true",
+        "status": "idle",
+        "config": {
+          "shell": "/bin/sh",
+          "command": "mkdir -p reports/nikto\nif [ \"{run_nikto}\" != \"true\" ]; then exit 0; fi\nif ! command -v nikto >/dev/null 2>&1; then echo 'nikto not installed' >> reports/nikto.txt; exit 0; fi\nsafe=$(printf '%s' \"$FLOW_ITEM\" | tr '/:?' '___')\nnikto -host \"$FLOW_ITEM\" -nointeractive -output \"reports/nikto/$safe.txt\" || true",
+          "itemVariable": "item",
+          "concurrency": 1,
+          "splitLines": true,
+          "trim": true,
+          "removeEmpty": true,
+          "continueOnError": true,
+          "retryCount": 0,
+          "retryDelayMs": 0,
+          "timeoutSeconds": 900
+        }
+      }
+    },
+    {
+      "id": "merge-nikto",
+      "type": "command",
+      "position": {
+        "x": 1100,
+        "y": 1660
+      },
+      "data": {
+        "label": "Merge Nikto reports",
+        "description": "Merge optional Nikto per-host reports",
+        "status": "idle",
+        "config": {
+          "shell": "/bin/sh",
+          "command": "mkdir -p reports/nikto\nif [ \"{run_nikto}\" != \"true\" ]; then echo 'Nikto disabled. Set run_nikto=true for authorized targets.' > reports/nikto.txt; cat reports/nikto.txt; exit 0; fi\ncat reports/nikto/*.txt > reports/nikto.txt 2>/dev/null || echo 'No nikto findings or reports.' > reports/nikto.txt\ncat reports/nikto.txt",
+          "env": {},
+          "runAfterFailure": true,
+          "retryCount": 0,
+          "retryDelayMs": 0,
+          "timeoutSeconds": 60
+        }
+      }
+    },
+    {
+      "id": "save-nikto",
+      "type": "output",
+      "position": {
+        "x": 1100,
+        "y": 1860
+      },
+      "data": {
+        "label": "Download Nikto report",
+        "description": "Save optional Nikto merged output",
+        "status": "idle",
+        "config": {
+          "filename": "nikto.txt",
+          "contentType": "text/plain",
+          "sourceMode": "workspace",
+          "sourcePath": "reports/nikto.txt",
+          "content": "{{input}}",
+          "runAfterFailure": true
+        }
+      }
+    },
+    {
+      "id": "save-technology-json",
+      "type": "output",
+      "position": {
+        "x": -260,
+        "y": 2050
+      },
+      "data": {
+        "label": "Download technology JSONL",
+        "description": "Save URL/server-header mapping as JSONL for table preview",
+        "status": "idle",
+        "config": {
+          "filename": "technology.jsonl",
+          "contentType": "application/jsonl",
+          "sourceMode": "workspace",
+          "sourcePath": "reports/technology.jsonl",
+          "content": "{{input}}",
+          "runAfterFailure": true
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "validate-target",
+      "target": "passive-enum",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e2",
+      "source": "passive-enum",
+      "target": "clean-subdomains",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e3",
+      "source": "clean-subdomains",
+      "target": "save-subdomains",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e4",
+      "source": "clean-subdomains",
+      "target": "has-subdomains",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e5",
+      "source": "clean-subdomains",
+      "target": "probe-live-hosts",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e6",
+      "source": "probe-live-hosts",
+      "target": "clean-live-hosts",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e7",
+      "source": "clean-live-hosts",
+      "target": "save-live-hosts",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e8",
+      "source": "probe-live-hosts",
+      "target": "save-tech-headers",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e9",
+      "source": "clean-live-hosts",
+      "target": "has-live-hosts",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e10",
+      "source": "clean-live-hosts",
+      "target": "fingerprint-servers",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e11",
+      "source": "fingerprint-servers",
+      "target": "ensure-technology",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e12",
+      "source": "ensure-technology",
+      "target": "save-technology",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e13",
+      "source": "clean-live-hosts",
+      "target": "optional-nuclei",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e14",
+      "source": "optional-nuclei",
+      "target": "save-nuclei",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e15",
+      "source": "clean-live-hosts",
+      "target": "optional-gobuster",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e16",
+      "source": "optional-gobuster",
+      "target": "merge-gobuster",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e17",
+      "source": "merge-gobuster",
+      "target": "save-gobuster",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e18",
+      "source": "clean-live-hosts",
+      "target": "optional-nikto",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e19",
+      "source": "optional-nikto",
+      "target": "merge-nikto",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e20",
+      "source": "merge-nikto",
+      "target": "save-nikto",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    },
+    {
+      "id": "e21",
+      "source": "ensure-technology",
+      "target": "save-technology-json",
+      "animated": true,
+      "style": {
+        "stroke": "#34d399"
+      }
+    }
+  ],
+  "templates": []
+}
