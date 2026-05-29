@@ -5,6 +5,7 @@ CLIFlow is a visual automation studio for composing and executing dependency-bas
 ## Features
 
 - Dark workflow editor with drag-and-drop nodes, typed inspector, custom templates, minimap, workflow logs, and an optional interactive terminal.
+- Left sidebar workflow recovery list for reattaching to active runs after navigation or login.
 - Variables, parser/filter, For Each, conditional, shell, SSH, Docker container, webhook, and downloadable output-file nodes.
 - App-container Shell workflows include pinned `httpx`, `subfinder`, `gobuster`, and selected SecLists wordlists for authorized reconnaissance tasks.
 - Parallel DAG scheduler with cycle validation, failure propagation, cancellation, and JSON data chaining.
@@ -53,11 +54,11 @@ The development `.env.example` enables the authenticated interactive terminal. I
 
 ## Using The Workflow Builder
 
-1. Drag a node from the left palette onto the canvas.
+1. Drag a node from the left palette onto the canvas. The node library and custom template sections can be collapsed when you need more room in the sidebar.
 2. Connect a node's bottom handle to another node's top handle. An edge means the downstream node waits for the upstream result.
 3. Select each node and configure it in the inspector on the right.
 4. Choose **Save changes** to persist the workflow to MySQL.
-5. Choose **Run workflow** and watch live output in the execution console.
+5. Choose **Run workflow** and watch live output in the execution console. Active runs also appear under **Running workflows** in the left sidebar; select one to reload its workflow and reattach live logs.
 6. Use **Export** to download the current canvas as a `.cliflow.json` file, or **Import** to create a new workflow from a previously exported file.
 7. Use **Inputs** to define workflow-level values such as `{domain}` or `{wordlist}`. These values are available to every node when the workflow runs.
 8. Use **Schedule** to enable cron-based workflow runs with schedule-specific input values.

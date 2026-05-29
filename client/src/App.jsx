@@ -55,6 +55,7 @@ export default function App() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyDetail, setHistoryDetail] = useState(null);
+  const [runningExecutions, setRunningExecutions] = useState([]);
   const [workflowTemplates, setWorkflowTemplates] = useState([]);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
@@ -91,6 +92,10 @@ export default function App() {
   const refreshWorkflows = useCallback(async () => setWorkflows(await api.list()), []);
   const refreshArtifacts = useCallback(async (workflowId) => setArtifacts(await api.artifacts(workflowId)), []);
   const refreshHistory = useCallback(async (workflowId) => setHistory(await api.executions(workflowId)), []);
+  const refreshRunningExecutions = useCallback(async () => {
+    const runs = await api.executions();
+    setRunningExecutions(runs.filter((run) => run.status === "running"));
+  }, []);
   const refreshTemplates = useCallback(async () => setWorkflowTemplates(await api.templates()), []);
 
   const loadWorkflow = useCallback(async (id) => {
@@ -135,7 +140,7 @@ export default function App() {
       try {
         const available = await api.list();
         setWorkflows(available);
-        await refreshTemplates();
+        await Promise.all([refreshTemplates(), refreshRunningExecutions()]);
         if (available.length) {
           await loadWorkflow(available[0].id);
         } else {
@@ -147,9 +152,17 @@ export default function App() {
         handleRequestError(error);
       }
     })();
-  }, [loadWorkflow, refreshTemplates, refreshWorkflows, user]);
+  }, [loadWorkflow, refreshRunningExecutions, refreshTemplates, refreshWorkflows, user]);
 
   useEffect(() => () => socket.current?.close(), []);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const timer = window.setInterval(() => {
+      refreshRunningExecutions().catch(handleRequestError);
+    }, 10000);
+    return () => window.clearInterval(timer);
+  }, [refreshRunningExecutions, user]);
 
   const saveWorkflow = useCallback(async () => {
     if (!workflow) return null;
@@ -218,6 +231,7 @@ export default function App() {
         setExecution((current) => ({ ...current, status: event.status }));
         refreshArtifacts(workflowId).catch(handleRequestError);
         refreshHistory(workflowId).catch(handleRequestError);
+        refreshRunningExecutions().catch(handleRequestError);
       }
     };
     connection.onerror = () => setNotice("Live log connection was interrupted.");
@@ -233,6 +247,7 @@ export default function App() {
       setNodes((current) => current.map((node) => ({ ...node, data: { ...node.data, status: "pending" } })));
       const run = await api.run(saved.id, runInputs);
       setExecution(run);
+      refreshRunningExecutions().catch(handleRequestError);
       openSocket(run, saved.id);
     } catch (error) {
       handleRequestError(error);
@@ -355,6 +370,7 @@ export default function App() {
     setHistoryOpen(false);
     setHistory([]);
     setHistoryDetail(null);
+    setRunningExecutions([]);
     setWorkflowTemplates([]);
     setTemplatesOpen(false);
     setTerminalOpen(false);
@@ -382,19 +398,41 @@ export default function App() {
       setHistoryDetail(run);
       if (run.status !== "running") {
         setNotice("This execution is no longer running.");
+        await refreshRunningExecutions();
         return;
+      }
+      const targetWorkflowId = run.workflowId || workflow.id;
+      if (targetWorkflowId !== workflow.id) {
+        const [loaded, outputFiles] = await Promise.all([api.get(targetWorkflowId), api.artifacts(targetWorkflowId)]);
+        setWorkflow(loaded);
+        setEdges(loaded.edges);
+        setArtifacts(outputFiles);
+        setSelectedNodeId(null);
+        setSelectedEdgeId(null);
+        setArtifactsOpen(false);
+        setTemplatesOpen(false);
+        setDirty(false);
+        setNodes(loaded.nodes.map((node) => ({
+          ...node,
+          data: {
+            ...node.data,
+            status: run.nodes?.[node.id]?.status || "pending",
+          },
+        })));
+      } else {
+        setNodes((current) => current.map((node) => ({
+          ...node,
+          data: {
+            ...node.data,
+            status: run.nodes?.[node.id]?.status || "pending",
+          },
+        })));
       }
       setExecution(run);
       setEvents([]);
-      setNodes((current) => current.map((node) => ({
-        ...node,
-        data: {
-          ...node.data,
-          status: run.nodes?.[node.id]?.status || "pending",
-        },
-      })));
       setHistoryOpen(false);
-      openSocket(run, run.workflowId || workflow.id);
+      await refreshRunningExecutions();
+      openSocket(run, targetWorkflowId);
     } catch (error) {
       handleRequestError(error);
     }
@@ -451,12 +489,15 @@ export default function App() {
             workflows={workflows}
             activeId={workflow.id}
             templates={workflow.templates || []}
+            runningExecutions={runningExecutions}
             onLoad={(id) => loadWorkflow(id).catch(handleRequestError)}
             onNew={createNew}
             onDeleteWorkflow={deleteWorkflow}
             onOpenTemplate={() => setTemplateModal(true)}
             onCollapse={() => setLeftPanelOpen(false)}
             onDragStart={(event, type, definition) => event.dataTransfer.setData("application/cliflow", JSON.stringify({ type, definition }))}
+            onRefreshRunning={() => refreshRunningExecutions().catch(handleRequestError)}
+            onResumeRunning={resumeExecution}
           />
           <div
             onMouseDown={resizeLeftPanel}

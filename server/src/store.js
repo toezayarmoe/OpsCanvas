@@ -83,6 +83,8 @@ function templateFromRow(row) {
 }
 
 async function seedWorkflows(userId) {
+  const [seeded] = await pool.execute("SELECT user_id FROM workflow_seed_state WHERE user_id = ? LIMIT 1", [userId]);
+  if (seeded.length) return;
   const files = await fs.readdir(seedsDir).catch(() => []);
   await Promise.all(
     files.filter((file) => file.endsWith(".json")).map(async (file) => {
@@ -95,6 +97,7 @@ async function seedWorkflows(userId) {
       );
     }),
   );
+  await pool.execute("INSERT IGNORE INTO workflow_seed_state (user_id) VALUES (?)", [userId]);
 }
 
 export async function listWorkflows(userId) {

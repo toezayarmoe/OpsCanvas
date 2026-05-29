@@ -46,6 +46,13 @@ export async function initializeDatabase() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   await pool.execute(`
+    CREATE TABLE IF NOT EXISTS workflow_seed_state (
+      user_id CHAR(36) NOT NULL PRIMARY KEY,
+      seeded_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      CONSTRAINT fk_workflow_seed_state_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await pool.execute(`
     CREATE TABLE IF NOT EXISTS artifacts (
       id CHAR(36) NOT NULL PRIMARY KEY,
       user_id CHAR(36) NOT NULL,

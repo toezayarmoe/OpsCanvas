@@ -1,7 +1,25 @@
-import { ChevronLeft, Clock3, Layers3, Plus, Trash2, Workflow } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight, Clock3, Layers3, PlayCircle, Plus, RefreshCw, Trash2, Workflow } from "lucide-react";
 import { NODE_CATALOG } from "../lib/catalog";
 
-export default function Sidebar({ width, workflows, activeId, templates, onLoad, onNew, onDeleteWorkflow, onOpenTemplate, onCollapse, onDragStart }) {
+export default function Sidebar({
+  width,
+  workflows,
+  activeId,
+  templates,
+  runningExecutions,
+  onLoad,
+  onNew,
+  onDeleteWorkflow,
+  onOpenTemplate,
+  onCollapse,
+  onDragStart,
+  onRefreshRunning,
+  onResumeRunning,
+}) {
+  const [libraryOpen, setLibraryOpen] = useState(true);
+  const [templatesOpen, setTemplatesOpen] = useState(true);
+
   return (
     <aside style={{ width }} className="flex shrink-0 flex-col border-r border-zinc-800/80 bg-[#090c13]">
       <div className="border-b border-zinc-800/80 p-5">
@@ -42,22 +60,57 @@ export default function Sidebar({ width, workflows, activeId, templates, onLoad,
           ))}
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="border-b border-zinc-800/80 p-4">
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Node library</p>
-          <Layers3 size={13} className="text-zinc-600" />
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Running workflows</p>
+          <button onClick={onRefreshRunning} title="Refresh running workflows" className="rounded-md p-1 text-zinc-500 hover:bg-zinc-800 hover:text-white">
+            <RefreshCw size={13} />
+          </button>
         </div>
-        <div className="space-y-2">
-          {Object.entries(NODE_CATALOG).map(([type, definition]) => (
-            <PaletteItem key={type} type={type} definition={definition} onDragStart={onDragStart} />
+        <div className="max-h-32 space-y-1 overflow-y-auto">
+          {runningExecutions.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-zinc-800 px-3 py-2 text-xs text-zinc-600">No running workflows.</p>
+          ) : runningExecutions.map((run) => (
+            <button
+              key={run.id}
+              onClick={() => onResumeRunning(run.id)}
+              className="w-full rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-left text-blue-100 hover:border-blue-500/40 hover:bg-blue-500/10"
+            >
+              <div className="flex items-center gap-2">
+                <PlayCircle size={13} className="shrink-0 text-blue-300" />
+                <p className="min-w-0 truncate text-sm font-medium">{run.workflowName || run.workflowId}</p>
+              </div>
+              <p className="mt-1 truncate text-[11px] text-blue-200/60">{new Date(run.startedAt).toLocaleString()}</p>
+            </button>
           ))}
         </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4">
+        <button onClick={() => setLibraryOpen((open) => !open)} className="mb-3 flex w-full items-center justify-between text-left">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Node library</span>
+          <span className="flex items-center gap-2 text-zinc-600">
+            <Layers3 size={13} />
+            {libraryOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </span>
+        </button>
+        {libraryOpen && (
+          <div className="space-y-2">
+            {Object.entries(NODE_CATALOG).map(([type, definition]) => (
+              <PaletteItem key={type} type={type} definition={definition} onDragStart={onDragStart} />
+            ))}
+          </div>
+        )}
         {templates.length > 0 && (
           <>
-            <p className="mb-3 mt-6 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Custom templates</p>
-            <div className="space-y-2">
-              {templates.map((template) => <PaletteItem key={template.id} type={template.type} definition={template} onDragStart={onDragStart} />)}
-            </div>
+            <button onClick={() => setTemplatesOpen((open) => !open)} className="mb-3 mt-6 flex w-full items-center justify-between text-left">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Custom templates</span>
+              {templatesOpen ? <ChevronDown size={14} className="text-zinc-600" /> : <ChevronRight size={14} className="text-zinc-600" />}
+            </button>
+            {templatesOpen && (
+              <div className="space-y-2">
+                {templates.map((template) => <PaletteItem key={template.id} type={template.type} definition={template} onDragStart={onDragStart} />)}
+              </div>
+            )}
           </>
         )}
         <button onClick={onOpenTemplate} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-700 px-3 py-2.5 text-sm text-zinc-400 hover:border-emerald-500/50 hover:text-emerald-300">

@@ -21,6 +21,8 @@ Open `http://localhost:4000`. In a local development deployment with registratio
 5. Use **Save changes** to persist the workflow.
 6. Use **Run workflow** to start an execution and view live node logs in the bottom console.
 
+The left sidebar also shows **Running workflows**. Click a running item to load that workflow and reattach the live execution stream. The **Node library** and **Custom templates** sections can be collapsed independently to keep the sidebar compact.
+
 ## Import And Export Workflows
 
 Use **Export** in the header to download the current canvas as a `.cliflow.json` file. The export includes node configuration, positions, edges, and custom templates; it does not include previous executions or downloadable output artifacts.
