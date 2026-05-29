@@ -98,10 +98,13 @@ export function getExecution(id, userId) {
   return {
     id: execution.id,
     workflowId: execution.workflowId,
+    workflowName: execution.workflowName,
     status: execution.status,
+    inputs: execution.variables,
     startedAt: execution.startedAt,
     completedAt: execution.completedAt,
     nodes: Object.fromEntries(execution.results),
+    events: execution.events,
   };
 }
 

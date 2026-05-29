@@ -74,6 +74,8 @@ Nodes without dependencies execute immediately and in parallel. Nodes with depen
 | Retry and timeout per node | Implemented |
 | Scheduler / cron runs | Implemented |
 | Run history detail page | Implemented |
+| Reattach live running execution from history | Implemented |
+| JSON / JSONL artifact table viewer | Implemented |
 | Reusable workflow templates | Implemented |
 
 Useful commands:
@@ -257,9 +259,9 @@ The full operator guide is in [NODE_USAGE.md](NODE_USAGE.md). Key runtime facts:
 - **Conditional** gates downstream nodes based on a JSON path, text match, regex, numeric comparison, or item count. Use two Conditional nodes with inverse rules for true and false branches.
 - **Retry / timeout** settings are available on every node. Retries rerun the node after failure; timeout kills the current attempt.
 - **Scheduler** runs enabled workflows from five-field cron expressions such as `*/15 * * * *` using server local time.
-- **Run history** stores completed execution status, node results, and logs in MySQL. Use **History** to inspect previous runs.
+- **Run history** stores execution status, node results, and logs in MySQL. Use **History** to inspect previous runs. If a run is still active after logout/login, open **History**, select the running run, and choose **Reattach** to restore the live console stream. If the server restarted, previously running rows are marked `interrupted` because the process no longer exists.
 - **Reusable workflow templates** save the current workflow as a user-owned template and create new workflows from it later.
-- **Output file** stores connected node output or a temporary execution-workspace file as an authenticated downloadable artifact in MySQL. Shell nodes in one run may share relative files, for example `subfinder ... > file1.txt` followed by `cat file1.txt file2.txt > final_sub.txt`.
+- **Output file** stores connected node output or a temporary execution-workspace file as an authenticated downloadable artifact in MySQL. Shell nodes in one run may share relative files, for example `subfinder ... > file1.txt` followed by `cat file1.txt file2.txt > final_sub.txt`. In **Outputs**, use the table icon to preview JSON arrays, JSON objects, and JSONL files such as `nuclei -jsonl` output as a searchable browser table instead of raw text.
 - **Shell command** runs via the chosen shell (`/bin/sh -lc` by default) in the application execution environment. With Docker Compose, that means inside the `app` container.
 - **Included shell tools** in the Compose app image: ProjectDiscovery `httpx v1.9.0`, ProjectDiscovery `subfinder v2.14.0`, `gobuster v3.8.2`, and selected SecLists wordlists at `/opt/seclists` with `SECLISTS=/opt/seclists`. Use them only against assets you are authorized to assess.
 - **SSH command** invokes `ssh` from the application execution environment. SSH keys and host verification files must exist inside that environment.

@@ -257,10 +257,15 @@ when workflow starts:
 
 while workflow runs:
   stream logs live over WebSocket
+  if the operator logs out and logs back in:
+    select the running history row
+    click Reattach to reopen the live WebSocket stream
 
 when workflow finishes:
   update execution row with final node results and captured logs
 ```
+
+If the server process restarts while a workflow is running, that old in-memory execution cannot be resumed. On startup CLIFlow marks those stale rows as `interrupted` so they do not appear as reconnectable live runs.
 
 The history page is for inspection and troubleshooting. For durable output files, reports, or scan data, use an Output file node.
 
@@ -406,6 +411,15 @@ Use an Output file node to turn connected task output into a durable file that c
 | Run when a dependency fails | Allows the node to run after upstream failure or skip. |
 
 Output files have a maximum size of 5 MB. They are scoped to the authenticated owner of the workflow.
+
+Use the table icon in **Outputs** to preview structured artifacts. The preview supports:
+
+- JSON arrays, for example `[{"host":"a.example.com"},{"host":"b.example.com"}]`
+- Single JSON objects, shown as one table row
+- JSONL / NDJSON, for example one Nuclei finding per line from `nuclei -jsonl`
+- Nested objects, flattened into dot-path columns such as `info.name` or `matched-at`
+
+If the artifact is not valid JSON or JSONL, the preview falls back to raw text and the normal download button still works.
 
 ### Example: Combine Files From Multiple Commands
 

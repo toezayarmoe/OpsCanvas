@@ -10,7 +10,7 @@ import { authenticationSucceeded, checkAuthRateLimit, createUser, establishSessi
 import { assertProductionConfig, config } from "./config.js";
 import { initializeDatabase } from "./db.js";
 import { cancelExecution, getExecution, startExecution, subscribeExecution } from "./engine.js";
-import { getExecutionHistory, listExecutionHistory } from "./history.js";
+import { getExecutionHistory, listExecutionHistory, markInterruptedExecutions } from "./history.js";
 import { deleteArtifact, getArtifact, listArtifacts } from "./artifacts.js";
 import { createWorkflow, createWorkflowFromTemplate, createWorkflowTemplate, deleteWorkflow, deleteWorkflowTemplate, getWorkflow, listWorkflowTemplates, listWorkflows, updateWorkflow } from "./store.js";
 import { openTerminal } from "./terminal.js";
@@ -242,6 +242,7 @@ server.on("upgrade", (request, socket, head) => {
 async function start() {
   assertProductionConfig();
   await initializeDatabase();
+  await markInterruptedExecutions();
   server.listen(config.port, config.host, () => {
     console.log(`CLIFlow listening on http://${config.host}:${config.port}`);
   });

@@ -376,6 +376,30 @@ export default function App() {
     try { setHistoryDetail(await api.execution(id)); } catch (error) { handleRequestError(error); }
   };
 
+  const resumeExecution = async (id) => {
+    try {
+      const run = await api.execution(id);
+      setHistoryDetail(run);
+      if (run.status !== "running") {
+        setNotice("This execution is no longer running.");
+        return;
+      }
+      setExecution(run);
+      setEvents([]);
+      setNodes((current) => current.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          status: run.nodes?.[node.id]?.status || "pending",
+        },
+      })));
+      setHistoryOpen(false);
+      openSocket(run, run.workflowId || workflow.id);
+    } catch (error) {
+      handleRequestError(error);
+    }
+  };
+
   const saveAsWorkflowTemplate = async () => {
     try {
       const saved = await saveWorkflow();
@@ -517,6 +541,7 @@ export default function App() {
             detail={historyDetail}
             onClose={() => setHistoryOpen(false)}
             onRefresh={() => openHistory()}
+            onResume={resumeExecution}
             onSelect={selectHistory}
           />
         )}

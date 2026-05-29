@@ -1,13 +1,15 @@
-import { Clock3, RefreshCw, X } from "lucide-react";
+import { Clock3, PlayCircle, RefreshCw, X } from "lucide-react";
 
 const statusClass = {
   success: "text-emerald-300",
   failed: "text-rose-300",
   running: "text-blue-300",
   cancelled: "text-zinc-300",
+  interrupted: "text-amber-300",
+  skipped: "text-zinc-400",
 };
 
-export default function ExecutionHistoryPanel({ executions, detail, onClose, onRefresh, onSelect }) {
+export default function ExecutionHistoryPanel({ executions, detail, onClose, onRefresh, onResume, onSelect }) {
   const logs = detail?.events?.filter((event) => event.type === "node.log") || [];
   return (
     <aside className="absolute right-6 top-20 z-30 flex max-h-[calc(100vh-7rem)] w-[560px] flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d121b] shadow-panel">
@@ -38,9 +40,26 @@ export default function ExecutionHistoryPanel({ executions, detail, onClose, onR
           ) : (
             <div className="space-y-4">
               <div className="rounded-xl border border-zinc-800 bg-[#090d14] p-3">
-                <p className={`text-sm font-semibold ${statusClass[detail.status] || "text-zinc-300"}`}>{detail.status}</p>
-                <p className="mt-1 text-xs text-zinc-500">Started: {new Date(detail.startedAt).toLocaleString()}</p>
-                {detail.completedAt && <p className="text-xs text-zinc-500">Completed: {new Date(detail.completedAt).toLocaleString()}</p>}
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className={`text-sm font-semibold ${statusClass[detail.status] || "text-zinc-300"}`}>{detail.status}</p>
+                    <p className="mt-1 text-xs text-zinc-500">Started: {new Date(detail.startedAt).toLocaleString()}</p>
+                    {detail.completedAt && <p className="text-xs text-zinc-500">Completed: {new Date(detail.completedAt).toLocaleString()}</p>}
+                  </div>
+                  {detail.status === "running" && (
+                    <button
+                      onClick={() => onResume(detail.id)}
+                      className="flex shrink-0 items-center gap-1 rounded-lg border border-blue-500/40 bg-blue-500/10 px-2.5 py-1.5 text-xs font-medium text-blue-200 hover:bg-blue-500/20"
+                    >
+                      <PlayCircle size={14} /> Reattach
+                    </button>
+                  )}
+                </div>
+                {detail.status === "interrupted" && (
+                  <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-200">
+                    This run was still marked running when the server started, so the live process is no longer available.
+                  </p>
+                )}
               </div>
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">Node results</p>
