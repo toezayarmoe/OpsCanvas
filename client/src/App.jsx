@@ -255,6 +255,25 @@ export default function App() {
     } catch (error) { handleRequestError(error); }
   };
 
+  const deleteWorkflow = async (id) => {
+    const target = workflows.find((item) => item.id === id);
+    const name = target?.name || "this workflow";
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    try {
+      await api.remove(id);
+      const remaining = (await api.list()).filter((item) => item.id !== id);
+      setWorkflows(remaining);
+      if (workflow?.id !== id) return;
+      if (remaining.length) {
+        await loadWorkflow(remaining[0].id);
+        return;
+      }
+      const created = await api.create({ ...emptyWorkflow(), name: "Starter workflow" });
+      await refreshWorkflows();
+      await loadWorkflow(created.id);
+    } catch (error) { handleRequestError(error); }
+  };
+
   const addTemplate = (template) => {
     setWorkflow((current) => ({ ...current, templates: [...(current.templates || []), template] }));
     setTemplateModal(false);
@@ -410,6 +429,7 @@ export default function App() {
             templates={workflow.templates || []}
             onLoad={(id) => loadWorkflow(id).catch(handleRequestError)}
             onNew={createNew}
+            onDeleteWorkflow={deleteWorkflow}
             onOpenTemplate={() => setTemplateModal(true)}
             onCollapse={() => setLeftPanelOpen(false)}
             onDragStart={(event, type, definition) => event.dataTransfer.setData("application/cliflow", JSON.stringify({ type, definition }))}

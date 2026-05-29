@@ -1,7 +1,7 @@
-import { ChevronLeft, Clock3, Layers3, Plus, Workflow } from "lucide-react";
+import { ChevronLeft, Clock3, Layers3, Plus, Trash2, Workflow } from "lucide-react";
 import { NODE_CATALOG } from "../lib/catalog";
 
-export default function Sidebar({ width, workflows, activeId, templates, onLoad, onNew, onOpenTemplate, onCollapse, onDragStart }) {
+export default function Sidebar({ width, workflows, activeId, templates, onLoad, onNew, onDeleteWorkflow, onOpenTemplate, onCollapse, onDragStart }) {
   return (
     <aside style={{ width }} className="flex shrink-0 flex-col border-r border-zinc-800/80 bg-[#090c13]">
       <div className="border-b border-zinc-800/80 p-5">
@@ -23,14 +23,22 @@ export default function Sidebar({ width, workflows, activeId, templates, onLoad,
         </div>
         <div className="max-h-40 space-y-1 overflow-y-auto">
           {workflows.map((workflow) => (
-            <button
+            <div
               key={workflow.id}
-              onClick={() => onLoad(workflow.id)}
-              className={`w-full rounded-lg px-3 py-2 text-left transition ${workflow.id === activeId ? "bg-zinc-800/80 text-white" : "text-zinc-400 hover:bg-zinc-900"}`}
+              className={`group flex items-center gap-1 rounded-lg transition ${workflow.id === activeId ? "bg-zinc-800/80 text-white" : "text-zinc-400 hover:bg-zinc-900"}`}
             >
-              <p className="truncate text-sm font-medium">{workflow.name}</p>
-              <p className="mt-1 flex items-center gap-1 text-[11px] text-zinc-500"><Clock3 size={10} /> {workflow.nodeCount ?? 0} nodes</p>
-            </button>
+              <button onClick={() => onLoad(workflow.id)} className="min-w-0 flex-1 px-3 py-2 text-left">
+                <p className="truncate text-sm font-medium">{workflow.name}</p>
+                <p className="mt-1 flex items-center gap-1 text-[11px] text-zinc-500"><Clock3 size={10} /> {workflow.nodeCount ?? 0} nodes</p>
+              </button>
+              <button
+                onClick={() => onDeleteWorkflow(workflow.id)}
+                title={`Delete ${workflow.name}`}
+                className="mr-2 rounded-md p-1.5 text-zinc-600 opacity-0 hover:bg-rose-500/10 hover:text-rose-300 group-hover:opacity-100"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
           ))}
         </div>
       </div>
