@@ -1,6 +1,6 @@
 # CLIFlow Node Usage Guide
 
-This guide explains how to build, connect, configure, and execute workflows in CLIFlow. It documents the behavior implemented by the current Variables, Parser / Filter, For Each, Conditional, Output file, Shell command, SSH command, Docker container, and Webhook nodes.
+This guide explains how to build, connect, configure, and execute workflows in CLIFlow. It documents the behavior implemented by the current Variables, Parser / Filter, JSON to Table, For Each, Conditional, Output file, Shell command, SSH command, Docker container, and Webhook nodes.
 
 ## Start And Sign In
 
@@ -138,7 +138,7 @@ Save that as `manual-recon.cliflow.json`, then use **Import** in the app.
 Supported node `type` values are:
 
 ```text
-variable, output, parser, foreach, conditional, command, ssh, docker, webhook
+variable, output, parser, jsontable, foreach, conditional, command, ssh, docker, webhook
 ```
 
 The easiest way to create correct JSON for a complex node is to add one example node in the UI, export the workflow, then copy and edit that node object.
@@ -544,6 +544,55 @@ File content: {{input}}
 ```
 
 Because Text lines mode includes `stdout`, the Output file node saves the cleaned newline-separated list.
+
+## JSON To Table Node
+
+Use a JSON to Table node when a command or webhook produces structured JSON/JSONL and you want a readable report without writing a custom script. It loops through arrays, `items`, `results`, `data`, or JSONL lines, flattens nested objects, and renders a table.
+
+### Inspector Fields
+
+| Field | Meaning |
+| --- | --- |
+| JSON path | Optional dot path to the array or object to render, such as `items`, `results`, `data`, or `stdout`. Leave blank to inspect the whole upstream output. |
+| Columns | Optional comma-separated column list, such as `host,ip,info.name,matched-at`. Leave blank to auto-detect columns. |
+| Format | Output format: Markdown, HTML, CSV, or JSON rows. |
+| Max rows | Optional row limit; `0` means no limit. |
+| Flatten nested objects | Converts nested objects to dot-path columns, such as `info.severity`. |
+
+### Example: Nuclei JSONL To Markdown Report
+
+Create this graph:
+
+```text
+Shell command -> JSON to Table -> Output file
+```
+
+**Shell command**:
+
+```sh
+nuclei -u https://example.com -jsonl
+```
+
+**JSON to Table**:
+
+```text
+JSON path: stdout
+Columns: template-id,info.name,info.severity,matched-at
+Format: Markdown
+Max rows: 0
+Flatten nested objects: enabled
+```
+
+**Output file**:
+
+```text
+Filename: nuclei-report.md
+Content type: text/markdown
+Source: Connected node output
+File content: {{input}}
+```
+
+Because JSON to Table returns the rendered table as `stdout`, the Output file node saves the table directly. For browser-friendly reports, choose **HTML** and save `report.html`. For spreadsheet import, choose **CSV** and save `report.csv`.
 
 ## For Each Node
 

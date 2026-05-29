@@ -17,7 +17,7 @@ import WorkflowScheduleModal from "./components/WorkflowScheduleModal";
 import ExecutionHistoryPanel from "./components/ExecutionHistoryPanel";
 import WorkflowTemplatesPanel from "./components/WorkflowTemplatesPanel";
 
-const nodeTypes = { variable: NodeCard, output: NodeCard, parser: NodeCard, foreach: NodeCard, conditional: NodeCard, command: NodeCard, ssh: NodeCard, docker: NodeCard, webhook: NodeCard };
+const nodeTypes = { variable: NodeCard, output: NodeCard, parser: NodeCard, jsontable: NodeCard, foreach: NodeCard, conditional: NodeCard, command: NodeCard, ssh: NodeCard, docker: NodeCard, webhook: NodeCard };
 const InteractiveTerminal = lazy(() => import("./components/InteractiveTerminal"));
 const emptyWorkflow = () => ({ name: "Untitled workflow", description: "", inputs: {}, schedule: { enabled: false, cron: "", inputs: {} }, nodes: [], edges: [], templates: [] });
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));

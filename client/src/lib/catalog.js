@@ -1,4 +1,4 @@
-import { Box, Braces, FileOutput, Filter, GitBranch, Globe, Repeat2, Server, TerminalSquare } from "lucide-react";
+import { Box, Braces, FileOutput, Filter, GitBranch, Globe, Repeat2, Server, Table2, TerminalSquare } from "lucide-react";
 
 export const NODE_CATALOG = {
   variable: {
@@ -21,6 +21,13 @@ export const NODE_CATALOG = {
     accent: "teal",
     icon: Filter,
     config: { splitLines: true, trim: true, removeEmpty: true, dedupe: true, includeRegex: "", excludeRegex: "", limit: 0, outputMode: "lines" },
+  },
+  jsontable: {
+    label: "JSON to Table",
+    description: "Flatten JSON or JSONL into a table",
+    accent: "blue",
+    icon: Table2,
+    config: { path: "", columns: "", format: "markdown", maxRows: 0, flatten: true },
   },
   foreach: {
     label: "For Each",

@@ -6,7 +6,7 @@ CLIFlow is a visual automation studio for composing and executing dependency-bas
 
 - Dark workflow editor with drag-and-drop nodes, typed inspector, custom templates, minimap, workflow logs, and an optional interactive terminal.
 - Left sidebar workflow recovery list for reattaching to active runs after navigation or login.
-- Variables, parser/filter, For Each, conditional, shell, SSH, Docker container, webhook, and downloadable output-file nodes.
+- Variables, parser/filter, JSON to Table, For Each, conditional, shell, SSH, Docker container, webhook, and downloadable output-file nodes.
 - App-container Shell workflows include pinned `httpx`, `subfinder`, `gobuster`, and selected SecLists wordlists for authorized reconnaissance tasks.
 - Parallel DAG scheduler with cycle validation, failure propagation, cancellation, and JSON data chaining.
 - MySQL persistence for users, sessions, and per-user workflows.
@@ -70,6 +70,7 @@ Nodes without dependencies execute immediately and in parallel. Nodes with depen
 | Feature | Status |
 | --- | --- |
 | Output parser / filter | Implemented |
+| JSON to Table node | Implemented |
 | For Each node | Implemented |
 | Conditional branching node | Implemented |
 | Retry and timeout per node | Implemented |
@@ -256,6 +257,7 @@ The full operator guide is in [NODE_USAGE.md](NODE_USAGE.md). Key runtime facts:
 - **Variables** defines named values for directly connected task nodes. For example, define `{ "url": "google.com" }`, connect it to a Shell node, and run `curl https://{url}`.
 - **Workflow inputs** define run-time values for the whole workflow. Configure defaults with **Inputs**, then use placeholders such as `{domain}` in any shell, SSH, Docker, webhook, or output node field that supports interpolation.
 - **Parser / Filter** cleans upstream stdout or JSON arrays. Use it to split lines, remove empty values, dedupe, apply include/exclude regex filters, and pass either text lines or a JSON array to downstream nodes.
+- **JSON to Table** converts JSON arrays, objects, parser items, or JSONL stdout into Markdown, HTML, CSV, or JSON rows. Use it before an Output file node to create readable scan reports.
 - **For Each** consumes upstream parser items, arrays, or stdout lines and runs one shell command per item with bounded concurrency. Use `{item}` in the command or read `FLOW_ITEM`.
 - **Conditional** gates downstream nodes based on a JSON path, text match, regex, numeric comparison, or item count. Use two Conditional nodes with inverse rules for true and false branches.
 - **Retry / timeout** settings are available on every node. Retries rerun the node after failure; timeout kills the current attempt.

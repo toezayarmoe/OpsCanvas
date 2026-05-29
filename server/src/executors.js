@@ -85,6 +85,18 @@ function executeParser(config, inputs, context) {
   return { items, stdout: items.join("\n"), count: items.length };
 }
 
+function parseJsonText(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) return [];
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (!lines.length) return [];
+    return lines.map((line) => JSON.parse(line));
+  }
+}
+
 function getInputValue(inputs) {
   return inputs.length === 1 ? inputs[0].output : inputs.map((input) => input.output);
 }
@@ -100,6 +112,107 @@ function readPath(value, pathExpression) {
       if (current == null) return undefined;
       return current[key];
     }, value);
+}
+
+function tableRowsFromValue(value) {
+  if (value == null) return [];
+  if (typeof value === "string") return tableRowsFromValue(parseJsonText(value));
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "object") return [{ value }];
+  if (Array.isArray(value.items)) return value.items;
+  if (Array.isArray(value.results)) return value.results;
+  if (Array.isArray(value.data)) return value.data;
+  if (Array.isArray(value.lines)) return value.lines;
+  if (typeof value.stdout === "string") return tableRowsFromValue(value.stdout);
+  if (typeof value.body === "string") return tableRowsFromValue(value.body);
+  return [value];
+}
+
+function flattenObject(value, prefix = "", output = {}) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    Object.entries(value).forEach(([key, child]) => {
+      const nextKey = prefix ? `${prefix}.${key}` : key;
+      if (child && typeof child === "object" && !Array.isArray(child)) flattenObject(child, nextKey, output);
+      else output[nextKey] = child;
+    });
+    return output;
+  }
+  output[prefix || "value"] = value;
+  return output;
+}
+
+function stringifyCell(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  return JSON.stringify(value);
+}
+
+function escapeMarkdownCell(value) {
+  return stringifyCell(value).replaceAll("\\", "\\\\").replaceAll("|", "\\|").replace(/\r?\n/g, "<br>");
+}
+
+function escapeHtml(value) {
+  return stringifyCell(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function escapeCsvCell(value) {
+  const text = stringifyCell(value);
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function renderTable(rows, columns, format) {
+  if (format === "json") return JSON.stringify(rows, null, 2);
+  if (format === "csv") {
+    return [
+      columns.map(escapeCsvCell).join(","),
+      ...rows.map((row) => columns.map((column) => escapeCsvCell(row[column])).join(",")),
+    ].join("\n");
+  }
+  if (format === "html") {
+    const headers = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
+    const body = rows.map((row) => `<tr>${columns.map((column) => `<td>${escapeHtml(row[column])}</td>`).join("")}</tr>`).join("\n");
+    return `<table>\n<thead><tr>${headers}</tr></thead>\n<tbody>\n${body}\n</tbody>\n</table>`;
+  }
+  const header = `| ${columns.map(escapeMarkdownCell).join(" | ")} |`;
+  const separator = `| ${columns.map(() => "---").join(" | ")} |`;
+  const body = rows.map((row) => `| ${columns.map((column) => escapeMarkdownCell(row[column])).join(" | ")} |`);
+  return [header, separator, ...body].join("\n");
+}
+
+function executeJsonTable(config, inputs, context) {
+  const source = readPath(getInputValue(inputs), config.path);
+  let rawRows;
+  try {
+    rawRows = tableRowsFromValue(source);
+  } catch (error) {
+    throw new Error(`JSON to Table could not parse input as JSON or JSONL: ${error.message}`);
+  }
+  const maxRows = Number(config.maxRows) > 0 ? Number(config.maxRows) : 0;
+  const selectedRows = maxRows ? rawRows.slice(0, maxRows) : rawRows;
+  const rows = selectedRows.map((row) => {
+    if (config.flatten === false) return row && typeof row === "object" && !Array.isArray(row) ? row : { value: row };
+    return flattenObject(row);
+  });
+  const configuredColumns = String(config.columns || "")
+    .split(",")
+    .map((column) => column.trim())
+    .filter(Boolean);
+  const columns = configuredColumns.length ? configuredColumns : [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  const safeColumns = columns.length ? columns : ["value"];
+  const table = renderTable(rows, safeColumns, config.format || "markdown");
+  context.log("stdout", `JSON to Table rendered ${rows.length} row(s) and ${safeColumns.length} column(s).\n`);
+  return {
+    columns: safeColumns,
+    rows,
+    count: rows.length,
+    format: config.format || "markdown",
+    table,
+    stdout: table,
+  };
 }
 
 function normalizeComparable(value, caseSensitive) {
@@ -353,6 +466,9 @@ export async function executeNode(node, inputs, context) {
 
     case "parser":
       return executeParser(config, inputs, context);
+
+    case "jsontable":
+      return executeJsonTable(config, inputs, context);
 
     case "foreach":
       return executeForEach(config, inputs, context, variables);

@@ -132,6 +132,36 @@ export default function NodeInspector({ width, node, onUpdate, onDelete, onClose
             <p className="text-xs leading-5 text-zinc-500">Consumes upstream stdout, text, JSON arrays, or items fields. Text lines are best for feeding Output file nodes or shell scripts.</p>
           </>
         )}
+        {node.type === "jsontable" && (
+          <>
+            <Field label="JSON path">
+              <input className={`${inputClass} font-mono text-xs`} value={config.path || ""} onChange={(event) => setConfig("path", event.target.value)} placeholder="items, results, stdout" />
+            </Field>
+            <Field label="Columns">
+              <input className={`${inputClass} font-mono text-xs`} value={config.columns || ""} onChange={(event) => setConfig("columns", event.target.value)} placeholder="host,ip,info.name,matched-at" />
+            </Field>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Format">
+                <select className={inputClass} value={config.format || "markdown"} onChange={(event) => setConfig("format", event.target.value)}>
+                  <option value="markdown">Markdown</option>
+                  <option value="html">HTML</option>
+                  <option value="csv">CSV</option>
+                  <option value="json">JSON rows</option>
+                </select>
+              </Field>
+              <Field label="Max rows">
+                <input className={inputClass} type="number" min="0" value={config.maxRows || 0} onChange={(event) => setConfig("maxRows", Number(event.target.value))} />
+              </Field>
+            </div>
+            <label className="flex items-center gap-2 rounded-lg border border-zinc-800 p-3 text-xs text-zinc-400">
+              <input type="checkbox" checked={config.flatten !== false} onChange={(event) => setConfig("flatten", event.target.checked)} />
+              Flatten nested objects into dot columns
+            </label>
+            <p className="text-xs leading-5 text-zinc-500">
+              Converts upstream JSON arrays, JSON objects, parser items, or JSONL text into a table. Leave columns empty to auto-detect all fields. Connect this node to an Output file node and save <span className="font-mono text-zinc-300">report.md</span>, <span className="font-mono text-zinc-300">report.html</span>, or <span className="font-mono text-zinc-300">report.csv</span>.
+            </p>
+          </>
+        )}
         {node.type === "foreach" && (
           <>
             <Field label="Shell"><input className={inputClass} value={config.shell} onChange={(event) => setConfig("shell", event.target.value)} /></Field>
