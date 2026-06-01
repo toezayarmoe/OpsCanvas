@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Clock3, Layers3, PlayCircle, Plus, RefreshCw, Trash2, Workflow } from "lucide-react";
+import { Braces, ChevronDown, ChevronLeft, ChevronRight, Clock3, CopyPlus, Download, Files, History, Layers3, PlayCircle, Plus, RefreshCw, TerminalSquare, Trash2, Upload, Workflow } from "lucide-react";
 import { NODE_CATALOG } from "../lib/catalog";
 
 export default function Sidebar({
@@ -16,7 +16,14 @@ export default function Sidebar({
   onDragStart,
   onRefreshRunning,
   onResumeRunning,
+  actions,
+  terminalEnabled,
+  terminalOpen,
+  inputsCount,
+  outputsCount,
+  scheduleEnabled,
 }) {
+  const [toolsOpen, setToolsOpen] = useState(true);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [templatesOpen, setTemplatesOpen] = useState(true);
 
@@ -85,6 +92,32 @@ export default function Sidebar({
           ))}
         </div>
       </div>
+      <div className="border-b border-zinc-800/80 p-4">
+        <button onClick={() => setToolsOpen((open) => !open)} className="mb-3 flex w-full items-center justify-between text-left">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Workflow tools</span>
+          {toolsOpen ? <ChevronDown size={14} className="text-zinc-600" /> : <ChevronRight size={14} className="text-zinc-600" />}
+        </button>
+        {toolsOpen && (
+          <div className="grid grid-cols-2 gap-2">
+            <ToolButton icon={Braces} label={`Inputs${inputsCount ? ` (${inputsCount})` : ""}`} onClick={actions.openInputs} />
+            <ToolButton icon={Clock3} label="Schedule" active={scheduleEnabled} onClick={actions.openSchedule} />
+            <ToolButton icon={Files} label={`Outputs${outputsCount ? ` (${outputsCount})` : ""}`} onClick={actions.openOutputs} />
+            <ToolButton icon={History} label="History" onClick={actions.openHistory} />
+            <ToolButton icon={Layers3} label="Templates" onClick={actions.openTemplates} />
+            <ToolButton icon={CopyPlus} label="Save template" onClick={actions.saveTemplate} />
+            <ToolButton icon={Upload} label="Import" onClick={actions.importWorkflow} />
+            <ToolButton icon={Download} label="Export" onClick={actions.exportWorkflow} />
+            {terminalEnabled && (
+              <button
+                onClick={actions.toggleTerminal}
+                className={`col-span-2 flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition ${terminalOpen ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-zinc-800 bg-[#0d1119] text-zinc-400 hover:border-zinc-700 hover:text-white"}`}
+              >
+                <TerminalSquare size={14} /> {terminalOpen ? "Hide terminal" : "Open terminal"}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
       <div className="flex-1 overflow-y-auto p-4">
         <button onClick={() => setLibraryOpen((open) => !open)} className="mb-3 flex w-full items-center justify-between text-left">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Node library</span>
@@ -118,6 +151,18 @@ export default function Sidebar({
         </button>
       </div>
     </aside>
+  );
+}
+
+function ToolButton({ icon: Icon, label, onClick, active = false }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition ${active ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-zinc-800 bg-[#0d1119] text-zinc-400 hover:border-zinc-700 hover:text-white"}`}
+    >
+      <Icon size={14} />
+      <span className="truncate">{label}</span>
+    </button>
   );
 }
 

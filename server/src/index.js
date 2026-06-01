@@ -10,7 +10,7 @@ import { authenticationSucceeded, checkAuthRateLimit, createUser, establishSessi
 import { assertProductionConfig, config } from "./config.js";
 import { initializeDatabase } from "./db.js";
 import { cancelExecution, getExecution, startExecution, subscribeExecution } from "./engine.js";
-import { getExecutionHistory, listExecutionHistory, markInterruptedExecutions } from "./history.js";
+import { getExecutionHistory, listExecutionHistory, markExecutionInterrupted, markInterruptedExecutions } from "./history.js";
 import { deleteArtifact, getArtifact, listArtifacts } from "./artifacts.js";
 import { createWorkflow, createWorkflowFromTemplate, createWorkflowTemplate, deleteWorkflow, deleteWorkflowTemplate, getWorkflow, listWorkflowTemplates, listWorkflows, updateWorkflow } from "./store.js";
 import { openTerminal } from "./terminal.js";
@@ -106,7 +106,16 @@ app.post("/api/workflows/:id/run", async (req, res, next) => {
 
 app.use("/api/executions", requireTrustedOrigin, requireAuth);
 app.get("/api/executions", async (req, res, next) => {
-  try { res.json(await listExecutionHistory(req.user.id, req.query.workflowId)); } catch (error) { next(error); }
+  try {
+    const executions = await listExecutionHistory(req.user.id, req.query.workflowId);
+    const reconciled = await Promise.all(executions.map(async (execution) => {
+      if (execution.status !== "running") return execution;
+      if (getExecution(execution.id, req.user.id)) return execution;
+      await markExecutionInterrupted(req.user.id, execution.id);
+      return { ...execution, status: "interrupted", completedAt: new Date().toISOString() };
+    }));
+    res.json(reconciled);
+  } catch (error) { next(error); }
 });
 app.get("/api/executions/:id", async (req, res, next) => {
   try {

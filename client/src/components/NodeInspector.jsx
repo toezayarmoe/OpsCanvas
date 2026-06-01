@@ -58,6 +58,7 @@ export default function NodeInspector({ width, node, onUpdate, onDelete, onClose
   const config = node.data.config;
   const setConfig = (field, value) => onUpdate({ config: { ...config, [field]: value } });
   const conditionalOperator = conditionalOperators.find((operator) => operator.value === (config.operator || "truthy")) || conditionalOperators[0];
+  const timeoutEnabled = Number(config.timeoutSeconds) > 0;
 
   return (
     <aside style={{ width }} className="shrink-0 overflow-y-auto border-l border-zinc-800/80 bg-[#0b0f16]">
@@ -153,6 +154,9 @@ export default function NodeInspector({ width, node, onUpdate, onDelete, onClose
                 <input className={inputClass} type="number" min="0" value={config.maxRows || 0} onChange={(event) => setConfig("maxRows", Number(event.target.value))} />
               </Field>
             </div>
+            <Field label="Unnest array column">
+              <input className={`${inputClass} font-mono text-xs`} value={config.unnest || ""} onChange={(event) => setConfig("unnest", event.target.value)} placeholder="roles, findings, items" />
+            </Field>
             <label className="flex items-center gap-2 rounded-lg border border-zinc-800 p-3 text-xs text-zinc-400">
               <input type="checkbox" checked={config.flatten !== false} onChange={(event) => setConfig("flatten", event.target.checked)} />
               Flatten nested objects into dot columns
@@ -280,10 +284,14 @@ export default function NodeInspector({ width, node, onUpdate, onDelete, onClose
               <input className={inputClass} type="number" min="0" max="600000" value={config.retryDelayMs || 0} onChange={(event) => setConfig("retryDelayMs", Number(event.target.value))} />
             </Field>
             <Field label="Timeout sec">
-              <input className={inputClass} type="number" min="0" max="86400" value={config.timeoutSeconds || 0} onChange={(event) => setConfig("timeoutSeconds", Number(event.target.value))} />
+              <input className={inputClass} type="number" min="1" max="86400" value={timeoutEnabled ? config.timeoutSeconds : 300} disabled={!timeoutEnabled} onChange={(event) => setConfig("timeoutSeconds", Number(event.target.value))} />
             </Field>
           </div>
-          <p className="mt-2 text-xs leading-5 text-zinc-500">Retries rerun this node after failure. Timeout `0` means no limit; timeout kills running shell, SSH, Docker, webhook, or loop work for the attempt.</p>
+          <label className="mt-2 flex items-center gap-2 text-xs text-zinc-400">
+            <input type="checkbox" checked={timeoutEnabled} onChange={(event) => setConfig("timeoutSeconds", event.target.checked ? 300 : 0)} />
+            Enable timeout per attempt
+          </label>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">Retries rerun this node after failure. When timeout is enabled, a running shell, SSH, Docker, webhook, or loop attempt is killed if it exceeds the limit.</p>
         </div>
         <button onClick={() => onDelete(node.id)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 py-2.5 text-sm text-rose-300 hover:bg-rose-500/20">
           <Trash2 size={15} /> Delete node

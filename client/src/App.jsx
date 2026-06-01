@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, { Background, Controls, MiniMap, addEdge, useEdgesState, useNodesState, useReactFlow } from "reactflow";
 import "reactflow/dist/style.css";
-import { Braces, ChevronLeft, ChevronRight, Clock3, CopyPlus, Download, Files, History, Layers3, LogOut, Play, Save, TerminalSquare, Trash2, Upload, Workflow } from "lucide-react";
+import { ChevronLeft, ChevronRight, LogOut, Play, Save, Trash2, Workflow } from "lucide-react";
 import { api } from "./lib/api";
 import { createNode } from "./lib/catalog";
 import { exportWorkflowFile, importWorkflowFile } from "./lib/workflowFile";
@@ -392,16 +392,12 @@ export default function App() {
     try { setHistoryDetail(await api.execution(id)); } catch (error) { handleRequestError(error); }
   };
 
-  const resumeExecution = async (id) => {
+  const openExecutionState = async (id) => {
     try {
       const run = await api.execution(id);
       setHistoryDetail(run);
-      if (run.status !== "running") {
-        setNotice("This execution is no longer running.");
-        await refreshRunningExecutions();
-        return;
-      }
       const targetWorkflowId = run.workflowId || workflow.id;
+      const statuses = run.nodes || {};
       if (targetWorkflowId !== workflow.id) {
         const [loaded, outputFiles] = await Promise.all([api.get(targetWorkflowId), api.artifacts(targetWorkflowId)]);
         setWorkflow(loaded);
@@ -416,7 +412,7 @@ export default function App() {
           ...node,
           data: {
             ...node.data,
-            status: run.nodes?.[node.id]?.status || "pending",
+            status: statuses[node.id]?.status || "idle",
           },
         })));
       } else {
@@ -424,15 +420,19 @@ export default function App() {
           ...node,
           data: {
             ...node.data,
-            status: run.nodes?.[node.id]?.status || "pending",
+            status: statuses[node.id]?.status || "idle",
           },
         })));
       }
       setExecution(run);
-      setEvents([]);
+      setEvents(run.events?.filter((event) => event.type === "node.log") || []);
       setHistoryOpen(false);
       await refreshRunningExecutions();
-      openSocket(run, targetWorkflowId);
+      if (run.status === "running") {
+        openSocket(run, targetWorkflowId);
+      } else {
+        socket.current?.close();
+      }
     } catch (error) {
       handleRequestError(error);
     }
@@ -497,7 +497,23 @@ export default function App() {
             onCollapse={() => setLeftPanelOpen(false)}
             onDragStart={(event, type, definition) => event.dataTransfer.setData("application/cliflow", JSON.stringify({ type, definition }))}
             onRefreshRunning={() => refreshRunningExecutions().catch(handleRequestError)}
-            onResumeRunning={resumeExecution}
+            onResumeRunning={openExecutionState}
+            actions={{
+              openInputs: () => setInputsModal("configure"),
+              openSchedule: () => setScheduleModal(true),
+              openOutputs: () => { setArtifactsOpen(true); refreshArtifacts(workflow.id).catch(handleRequestError); },
+              openHistory,
+              openTemplates,
+              saveTemplate: saveAsWorkflowTemplate,
+              importWorkflow: () => importFile.current?.click(),
+              exportWorkflow,
+              toggleTerminal: () => setTerminalOpen((open) => !open),
+            }}
+            terminalEnabled={terminalEnabled}
+            terminalOpen={terminalOpen}
+            inputsCount={Object.keys(workflow.inputs || {}).length}
+            outputsCount={artifacts.length}
+            scheduleEnabled={Boolean(workflow.schedule?.enabled)}
           />
           <div
             onMouseDown={resizeLeftPanel}
@@ -518,35 +534,6 @@ export default function App() {
           </div>
           <div className="flex gap-2">
             <input ref={importFile} type="file" accept=".json,.cliflow.json,application/json" className="hidden" onChange={importWorkflow} />
-            <button onClick={() => importFile.current?.click()} title="Import workflow file" className="flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
-              <Upload size={15} /> Import
-            </button>
-            <button onClick={exportWorkflow} title="Export current workflow file" className="flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
-              <Download size={15} /> Export
-            </button>
-            {terminalEnabled && (
-              <button onClick={() => setTerminalOpen((open) => !open)} className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-zinc-800 ${terminalOpen ? "border-emerald-500/50 text-emerald-300" : "border-zinc-700 text-zinc-300"}`}>
-                <TerminalSquare size={15} /> Terminal
-              </button>
-            )}
-            <button onClick={() => setInputsModal("configure")} title="Configure workflow inputs" className="flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
-              <Braces size={15} /> Inputs {Object.keys(workflow.inputs || {}).length ? `(${Object.keys(workflow.inputs || {}).length})` : ""}
-            </button>
-            <button onClick={() => setScheduleModal(true)} title="Configure scheduled runs" className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-zinc-800 ${workflow.schedule?.enabled ? "border-emerald-500/50 text-emerald-300" : "border-zinc-700 text-zinc-300"}`}>
-              <Clock3 size={15} /> Schedule
-            </button>
-            <button onClick={() => { setArtifactsOpen(true); refreshArtifacts(workflow.id).catch(handleRequestError); }} className="flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
-              <Files size={15} /> Outputs {artifacts.length ? `(${artifacts.length})` : ""}
-            </button>
-            <button onClick={openHistory} className="flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
-              <History size={15} /> History
-            </button>
-            <button onClick={openTemplates} className="flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
-              <Layers3 size={15} /> Templates
-            </button>
-            <button onClick={saveAsWorkflowTemplate} title="Save current workflow as reusable template" className="flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
-              <CopyPlus size={15} /> Save template
-            </button>
             <button onClick={() => saveWorkflow().catch(handleRequestError)} className="flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
               <Save size={15} /> {dirty ? "Save changes" : "Saved"}
             </button>
@@ -582,7 +569,7 @@ export default function App() {
             detail={historyDetail}
             onClose={() => setHistoryOpen(false)}
             onRefresh={() => openHistory()}
-            onResume={resumeExecution}
+            onResume={openExecutionState}
             onSelect={selectHistory}
           />
         )}

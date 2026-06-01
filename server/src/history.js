@@ -65,6 +65,16 @@ export async function markInterruptedExecutions() {
   );
 }
 
+export async function markExecutionInterrupted(userId, id) {
+  await pool.execute(
+    `UPDATE executions
+        SET status = 'interrupted',
+            completed_at = COALESCE(completed_at, NOW(3))
+      WHERE user_id = ? AND id = ? AND status = 'running'`,
+    [userId, id],
+  );
+}
+
 export async function listExecutionHistory(userId, workflowId) {
   const params = [userId];
   let where = "WHERE user_id = ?";

@@ -254,7 +254,9 @@ async function runNode(execution, node, dependencies) {
       cleanupCancelHandlers();
       const requestedStatus = output?.__cliflowStatus === "skipped" ? "skipped" : "success";
       const publicOutput = output && typeof output === "object"
-        ? Object.fromEntries(Object.entries(output).filter(([key]) => key !== "__cliflowStatus"))
+        ? Array.isArray(output)
+          ? output
+          : Object.fromEntries(Object.entries(output).filter(([key]) => key !== "__cliflowStatus"))
         : output;
       const result = { status: requestedStatus, startedAt, completedAt: new Date().toISOString(), output: publicOutput, variables: collectVariables([{ output: publicOutput, variables }]), attempts: attempt };
       execution.results.set(node.id, result);

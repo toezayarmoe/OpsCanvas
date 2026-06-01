@@ -557,6 +557,7 @@ Use a JSON to Table node when a command or webhook produces structured JSON/JSON
 | Columns | Optional comma-separated column list, such as `host,ip,info.name,matched-at`. Leave blank to auto-detect columns. |
 | Format | Output format: Markdown, HTML, CSV, or JSON rows. |
 | Max rows | Optional row limit; `0` means no limit. |
+| Unnest array column | Optional dot path to an array column to explode into separate rows, such as `roles`, `findings`, or `info.tags`. Each array element becomes its own row, duplicating sibling columns. Array-of-object elements produce `column.key` sub-columns. |
 | Flatten nested objects | Converts nested objects to dot-path columns, such as `info.severity`. |
 
 ### Example: Nuclei JSONL To Markdown Report
@@ -593,6 +594,68 @@ File content: {{input}}
 ```
 
 Because JSON to Table returns the rendered table as `stdout`, the Output file node saves the table directly. For browser-friendly reports, choose **HTML** and save `report.html`. For spreadsheet import, choose **CSV** and save `report.csv`.
+
+### Example: Unnest Nested Arrays Into Rows
+
+When a JSON column contains an array of objects, use **Unnest array column** to explode each element into its own row with `column.key` sub-columns. This is useful for nested structures like findings lists, role assignments, or tag arrays.
+
+Create this graph:
+
+```text
+Shell command -> JSON to Table -> Output file
+```
+
+**Shell command**:
+
+```sh
+cat findings.json
+```
+
+Where `findings.json` contains:
+
+```json
+[
+  {"host":"a.com","findings":[{"name":"sqli","severity":"critical"},{"name":"xss","severity":"medium"}]},
+  {"host":"b.com","findings":[{"name":"open-redirect","severity":"low"}]}
+]
+```
+
+**JSON to Table**:
+
+```text
+JSON path: (blank)
+Columns: host,findings.name,findings.severity
+Format: Markdown
+Unnest array column: findings
+Flatten nested objects: enabled
+```
+
+Result:
+
+```text
+| host | findings.name | findings.severity |
+| --- | --- | --- |
+| a.com | sqli | critical |
+| a.com | xss | medium |
+| b.com | open-redirect | low |
+```
+
+Without `unnest`, the `findings` array would render as a JSON-stringified blob like `[{"name":"sqli","severity":"critical"},...]` in a single cell. With `unnest: findings`, each finding becomes its own row with the parent `host` value duplicated.
+
+For arrays of primitives (strings, numbers), set **Unnest array column** to the column name. Each value becomes a row and the column name stays the same:
+
+```text
+Input:  [{"host":"a.com","tags":["cve","rce","jboss"]}]
+Config: unnest=tags, columns=host,tags
+
+| host | tags |
+| --- | --- |
+| a.com | cve |
+| a.com | rce |
+| a.com | jboss |
+```
+
+For nuclei JSONL output with tag arrays, use `unnest: info.tags` to get one row per tag per target — 3 input lines with 12 tags each yields 36 rows.
 
 ## For Each Node
 

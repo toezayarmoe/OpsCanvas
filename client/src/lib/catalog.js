@@ -27,7 +27,7 @@ export const NODE_CATALOG = {
     description: "Flatten JSON or JSONL into a table",
     accent: "blue",
     icon: Table2,
-    config: { path: "", columns: "", format: "markdown", maxRows: 0, flatten: true },
+    config: { path: "", columns: "", format: "markdown", maxRows: 0, flatten: true, unnest: "" },
   },
   foreach: {
     label: "For Each",

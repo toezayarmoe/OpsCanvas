@@ -1,4 +1,4 @@
-import { Clock3, PlayCircle, RefreshCw, X } from "lucide-react";
+import { Clock3, Eye, PlayCircle, RefreshCw, X } from "lucide-react";
 
 const statusClass = {
   success: "text-emerald-300",
@@ -46,14 +46,13 @@ export default function ExecutionHistoryPanel({ executions, detail, onClose, onR
                     <p className="mt-1 text-xs text-zinc-500">Started: {new Date(detail.startedAt).toLocaleString()}</p>
                     {detail.completedAt && <p className="text-xs text-zinc-500">Completed: {new Date(detail.completedAt).toLocaleString()}</p>}
                   </div>
-                  {detail.status === "running" && (
-                    <button
-                      onClick={() => onResume(detail.id)}
-                      className="flex shrink-0 items-center gap-1 rounded-lg border border-blue-500/40 bg-blue-500/10 px-2.5 py-1.5 text-xs font-medium text-blue-200 hover:bg-blue-500/20"
-                    >
-                      <PlayCircle size={14} /> Reattach
-                    </button>
-                  )}
+                  <button
+                    onClick={() => onResume(detail.id)}
+                    className={`flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium hover:bg-blue-500/20 ${detail.status === "running" ? "border-blue-500/40 bg-blue-500/10 text-blue-200" : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-blue-500/40 hover:text-blue-200"}`}
+                  >
+                    {detail.status === "running" ? <PlayCircle size={14} /> : <Eye size={14} />}
+                    {detail.status === "running" ? "Reattach" : "Open run"}
+                  </button>
                 </div>
                 {detail.status === "interrupted" && (
                   <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-200">

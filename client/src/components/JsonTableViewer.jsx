@@ -40,8 +40,13 @@ function parseContent(content) {
     return rowsFromJson(JSON.parse(text));
   } catch {
     const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const parsed = lines.map((line) => JSON.parse(line));
-    return rowsFromJson(parsed);
+    return rowsFromJson(lines.map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return { value: line };
+      }
+    }));
   }
 }
 

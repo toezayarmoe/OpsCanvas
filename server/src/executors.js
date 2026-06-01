@@ -93,7 +93,13 @@ function parseJsonText(text) {
   } catch {
     const lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     if (!lines.length) return [];
-    return lines.map((line) => JSON.parse(line));
+    return lines.map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return { value: line };
+      }
+    });
   }
 }
 
@@ -183,6 +189,31 @@ function renderTable(rows, columns, format) {
   return [header, separator, ...body].join("\n");
 }
 
+function unnestRows(rows, path) {
+  if (!path) return rows;
+  const expanded = [];
+  for (const row of rows) {
+    const value = row[path];
+    if (Array.isArray(value) && value.length) {
+      for (const element of value) {
+        const newRow = { ...row };
+        delete newRow[path];
+        if (element && typeof element === "object" && !Array.isArray(element)) {
+          Object.entries(flattenObject(element)).forEach(([key, val]) => {
+            newRow[`${path}.${key}`] = val;
+          });
+        } else {
+          newRow[path] = element;
+        }
+        expanded.push(newRow);
+      }
+    } else {
+      expanded.push(row);
+    }
+  }
+  return expanded;
+}
+
 function executeJsonTable(config, inputs, context) {
   const source = readPath(getInputValue(inputs), config.path);
   let rawRows;
@@ -193,10 +224,11 @@ function executeJsonTable(config, inputs, context) {
   }
   const maxRows = Number(config.maxRows) > 0 ? Number(config.maxRows) : 0;
   const selectedRows = maxRows ? rawRows.slice(0, maxRows) : rawRows;
-  const rows = selectedRows.map((row) => {
+  let rows = selectedRows.map((row) => {
     if (config.flatten === false) return row && typeof row === "object" && !Array.isArray(row) ? row : { value: row };
     return flattenObject(row);
   });
+  rows = unnestRows(rows, (config.unnest || "").trim());
   const configuredColumns = String(config.columns || "")
     .split(",")
     .map((column) => column.trim())
@@ -204,6 +236,7 @@ function executeJsonTable(config, inputs, context) {
   const columns = configuredColumns.length ? configuredColumns : [...new Set(rows.flatMap((row) => Object.keys(row)))];
   const safeColumns = columns.length ? columns : ["value"];
   const table = renderTable(rows, safeColumns, config.format || "markdown");
+  context.log("stdout", `\n${table}\n`);
   context.log("stdout", `JSON to Table rendered ${rows.length} row(s) and ${safeColumns.length} column(s).\n`);
   return {
     columns: safeColumns,
